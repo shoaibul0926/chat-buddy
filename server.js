@@ -8,12 +8,18 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
+const Tesseract = require('tesseract.js');
+const tf = require('@tensorflow/tfjs');
+const cocoSsd = require('@tensorflow-models/coco-ssd');
+const { Jimp } = require('jimp');
 const db = require('./db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.txt'];
+const DOC_EXTENSIONS = ['.pdf', '.docx', '.txt'];
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.gif'];
+const ALLOWED_EXTENSIONS = [...DOC_EXTENSIONS, ...IMAGE_EXTENSIONS];
 
 const app = express();
 app.use(cors());
@@ -68,6 +74,112 @@ async function extractText(filePath, ext) {
   return '';
 }
 
+let cocoModelPromise = null;
+function getCocoModel() {
+  if (!cocoModelPromise) cocoModelPromise = cocoSsd.load();
+  return cocoModelPromise;
+}
+
+let tesseractWorkerPromise = null;
+function getTesseractWorker() {
+  if (!tesseractWorkerPromise) tesseractWorkerPromise = Tesseract.createWorker('eng');
+  return tesseractWorkerPromise;
+}
+
+const NAMED_COLORS = [
+  { name: 'red', rgb: [220, 20, 20] }, { name: 'orange', rgb: [230, 130, 30] },
+  { name: 'yellow', rgb: [220, 210, 30] }, { name: 'green', rgb: [40, 160, 60] },
+  { name: 'cyan', rgb: [40, 190, 200] }, { name: 'blue', rgb: [40, 80, 210] },
+  { name: 'purple', rgb: [130, 50, 180] }, { name: 'pink', rgb: [230, 130, 180] },
+  { name: 'brown', rgb: [110, 70, 40] }, { name: 'white', rgb: [240, 240, 240] },
+  { name: 'gray', rgb: [130, 130, 130] }, { name: 'black', rgb: [20, 20, 20] }
+];
+
+function closestColorName(r, g, b) {
+  let best = null, bestDist = Infinity;
+  for (const c of NAMED_COLORS) {
+    const d = (r - c.rgb[0]) ** 2 + (g - c.rgb[1]) ** 2 + (b - c.rgb[2]) ** 2;
+    if (d < bestDist) { bestDist = d; best = c.name; }
+  }
+  return best;
+}
+
+function generateCaption(objectCounts, ocrText, colorName, brightnessLabel) {
+  const parts = [];
+  const objectNames = Object.keys(objectCounts);
+  if (objectNames.length) {
+    const described = objectNames.map(name => {
+      const count = objectCounts[name];
+      return count > 1 ? `${count} ${name}s` : `a ${name}`;
+    });
+    parts.push(`This image appears to contain ${described.join(', ')}.`);
+  } else {
+    parts.push('No specific objects were confidently recognized in this image.');
+  }
+  parts.push(`It is predominantly ${colorName} and ${brightnessLabel}.`);
+  if (ocrText && ocrText.trim()) {
+    parts.push(`It also contains visible text.`);
+  }
+  return parts.join(' ');
+}
+
+async function analyzeImageFile(filePath) {
+  const image = await Jimp.read(filePath);
+  const { width, height, data } = image.bitmap;
+
+  let r = 0, g = 0, b = 0, count = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i]; g += data[i + 1]; b += data[i + 2];
+    count++;
+  }
+  r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  const brightnessLabel = brightness > 180 ? 'bright' : brightness > 90 ? 'medium brightness' : 'dark';
+  const colorName = closestColorName(r, g, b);
+  const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+
+  const worker = await getTesseractWorker();
+  const { data: ocrData } = await worker.recognize(filePath);
+  const ocrText = (ocrData.text || '').trim();
+
+  const pixels = new Int32Array(width * height * 3);
+  let p = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    pixels[p++] = data[i]; pixels[p++] = data[i + 1]; pixels[p++] = data[i + 2];
+  }
+  const tensor = tf.tensor3d(pixels, [height, width, 3], 'int32');
+  const model = await getCocoModel();
+  let predictions = [];
+  try {
+    predictions = await model.detect(tensor, 10, 0.5);
+  } finally {
+    tensor.dispose();
+  }
+
+  const objectCounts = {};
+  for (const p of predictions) {
+    objectCounts[p.class] = (objectCounts[p.class] || 0) + 1;
+  }
+
+  const caption = generateCaption(objectCounts, ocrText, colorName, brightnessLabel);
+
+  const objectSummary = Object.entries(objectCounts)
+    .map(([name, n]) => `${name}${n > 1 ? ` (x${n})` : ''}`)
+    .join(', ');
+
+  const searchableText = [
+    caption,
+    objectSummary ? `Detected objects: ${objectSummary}.` : '',
+    ocrText ? `Text found in image: ${ocrText}` : ''
+  ].filter(Boolean).join('\n');
+
+  return {
+    width, height, hex, colorName, brightnessLabel,
+    ocrText, objects: predictions.map(p => ({ class: p.class, score: p.score })),
+    caption, searchableText
+  };
+}
+
 const STOPWORDS = new Set([
   'the', 'is', 'a', 'an', 'of', 'to', 'and', 'in', 'on', 'for', 'what', 'does',
   'do', 'say', 'about', 'tell', 'me', 'file', 'document', 'that', 'this', 'it',
@@ -75,7 +187,7 @@ const STOPWORDS = new Set([
 ]);
 
 function words(text) {
-  return (text.toLowerCase().match(/[a-z0-9]+/g) || []).filter(w => !STOPWORDS.has(w));
+  return (text.toLowerCase().match(/[a-z]+|[0-9]+/g) || []).filter(w => !STOPWORDS.has(w));
 }
 
 function findAnswer(files, question) {
@@ -97,20 +209,33 @@ function findAnswer(files, question) {
 
 app.post('/api/files', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded, or unsupported type (only PDF, DOCX, TXT allowed).' });
+    return res.status(400).json({ error: 'No file uploaded, or unsupported type (only PDF, DOCX, TXT, JPG, PNG, GIF, BMP allowed).' });
   }
   try {
     const ext = path.extname(req.file.originalname).toLowerCase();
-    const text = (await extractText(req.file.path, ext)).slice(0, 200000);
-    const fileRecord = {
+    const isImage = IMAGE_EXTENSIONS.includes(ext);
+
+    let fileRecord = {
       id: req._fileId,
       name: req.file.originalname,
       type: ext.slice(1),
       size: req.file.size,
       storedName: req.file.filename,
-      text,
       uploadedAt: new Date().toISOString()
     };
+
+    if (isImage) {
+      const analysis = await analyzeImageFile(req.file.path);
+      fileRecord.text = analysis.searchableText.slice(0, 200000);
+      fileRecord.meta = {
+        width: analysis.width, height: analysis.height,
+        hex: analysis.hex, colorName: analysis.colorName, brightnessLabel: analysis.brightnessLabel,
+        caption: analysis.caption, objects: analysis.objects, ocrText: analysis.ocrText
+      };
+    } else {
+      fileRecord.text = (await extractText(req.file.path, ext)).slice(0, 200000);
+    }
+
     db.addFile(req.user.id, fileRecord);
     res.json({
       file: {
@@ -118,19 +243,20 @@ app.post('/api/files', requireAuth, upload.single('file'), async (req, res) => {
         name: fileRecord.name,
         type: fileRecord.type,
         size: fileRecord.size,
-        uploadedAt: fileRecord.uploadedAt
+        uploadedAt: fileRecord.uploadedAt,
+        meta: fileRecord.meta
       }
     });
   } catch (e) {
     console.error(e);
     fs.unlink(req.file.path, () => {});
-    res.status(500).json({ error: 'Could not read that file. It may be corrupted or password-protected.' });
+    res.status(500).json({ error: 'Could not read that file. It may be corrupted or in an unsupported format.' });
   }
 });
 
 app.get('/api/files', requireAuth, (req, res) => {
   const files = db.listFiles(req.user.id).map(f => ({
-    id: f.id, name: f.name, type: f.type, size: f.size, uploadedAt: f.uploadedAt
+    id: f.id, name: f.name, type: f.type, size: f.size, uploadedAt: f.uploadedAt, meta: f.meta
   }));
   res.json({ files });
 });
@@ -138,7 +264,7 @@ app.get('/api/files', requireAuth, (req, res) => {
 app.get('/api/files/:id', requireAuth, (req, res) => {
   const file = db.getFile(req.user.id, req.params.id);
   if (!file) return res.status(404).json({ error: 'Not found' });
-  res.json({ id: file.id, name: file.name, type: file.type, text: file.text });
+  res.json({ id: file.id, name: file.name, type: file.type, text: file.text, meta: file.meta });
 });
 
 app.get('/api/files/:id/download', requireAuth, (req, res) => {
@@ -196,3 +322,6 @@ app.put('/api/data', requireAuth, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Chat Buddy server running at http://localhost:${PORT}`);
 });
+
+getCocoModel().then(() => console.log('Object detection model ready')).catch(e => console.error('Model preload failed', e));
+getTesseractWorker().then(() => console.log('OCR worker ready')).catch(e => console.error('OCR worker preload failed', e));

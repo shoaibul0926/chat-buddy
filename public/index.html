@@ -712,7 +712,7 @@
     { patterns: ['weather'], replies: ["I can't check the weather, but I hope it's sunny where you are!"] },
     { patterns: ['time'], replies: [() => `It's currently ${new Date().toLocaleTimeString()}.`] },
     { patterns: ['date', 'today'], replies: [() => `Today's date is ${new Date().toLocaleDateString()}.`] },
-    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), handle multi-step requests, and read PDF/DOCX/TXT files you upload — just ask me a question about one afterward!'] }
+    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), handle multi-step requests, and read PDF/DOCX/TXT/images you upload (with OCR and object detection for images) — just ask me a question afterward!'] }
   ];
 
   const fallbacks = [
@@ -847,12 +847,52 @@
           `Dominant color: ${info.colorName} (${info.hex})<br>` +
           `Overall tone: ${info.brightnessLabel}`;
         addHtmlMessage(html, 'bot');
+
+        if (authToken) uploadImageForIntelligence(file);
       });
     };
     reader.readAsDataURL(file);
   }
 
+  async function uploadImageForIntelligence(file) {
+    const typingEl = showTyping();
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/files', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + authToken },
+        body: formData
+      });
+      const data = await res.json();
+      typingEl.remove();
+      if (!res.ok) {
+        addMessage(data.error || "I couldn't run deeper analysis on that image.", 'bot');
+        return;
+      }
+      userFiles.push({ id: data.file.id, name: data.file.name, type: data.file.type, size: data.file.size });
+      const meta = data.file.meta || {};
+      const uniqueObjects = [...new Set((meta.objects || []).map(o => o.class))];
+
+      let html = `🔎 <b>Deeper analysis</b> (OCR + object detection):<br>${escapeHtml(meta.caption || '')}`;
+      if (uniqueObjects.length) {
+        html += `<br>Objects detected: ${escapeHtml(uniqueObjects.join(', '))}`;
+      }
+      if (meta.ocrText) {
+        const ocrSnippet = meta.ocrText.slice(0, 300);
+        html += `<br>Text found: "${escapeHtml(ocrSnippet)}${meta.ocrText.length > 300 ? '…' : ''}"`;
+      }
+      html += `<br><button class="preview-btn" onclick="previewFile('${data.file.id}')">👁 Preview</button>`;
+      addHtmlMessage(html, 'bot');
+      addMessage('This image is saved — ask me anything about it any time.', 'bot');
+    } catch (e) {
+      typingEl.remove();
+      addMessage("I couldn't reach the server for deeper image analysis, but the quick analysis above still applies.", 'bot');
+    }
+  }
+
   const DOC_ICONS = { pdf: '📕', docx: '📘', txt: '📃' };
+  const IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'bmp', 'gif'];
 
   async function handleDocUpload(file) {
     if (!file) return;
@@ -895,13 +935,22 @@
     const meta = userFiles.find(f => f.id === fileId);
     if (!meta || !authToken) return;
     try {
-      if (meta.type === 'pdf') {
+      if (meta.type === 'pdf' || IMAGE_TYPES.includes(meta.type)) {
+        // Open the tab synchronously (within the click's user-gesture context) so
+        // browsers don't treat it as a popup once we navigate it after the awaits below.
+        const newTab = window.open('', '_blank');
         const res = await fetch('/api/files/' + fileId + '/download', {
           headers: { Authorization: 'Bearer ' + authToken }
         });
-        if (!res.ok) { addMessage("Couldn't load that file for preview.", 'bot'); return; }
+        if (!res.ok) {
+          if (newTab) newTab.close();
+          addMessage("Couldn't load that file for preview.", 'bot');
+          return;
+        }
         const blob = await res.blob();
-        window.open(URL.createObjectURL(blob), '_blank');
+        const blobUrl = URL.createObjectURL(blob);
+        if (newTab) newTab.location.href = blobUrl;
+        else window.open(blobUrl, '_blank');
       } else {
         const res = await fetch('/api/files/' + fileId, {
           headers: { Authorization: 'Bearer ' + authToken }
