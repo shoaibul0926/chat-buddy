@@ -763,10 +763,10 @@
   function getReply(input) {
     const text = input.toLowerCase();
 
-    const nameReply = tryName(text);
+    const nameReply = tryName(input);
     if (nameReply) return nameReply;
 
-    const noteReply = tryNote(text);
+    const noteReply = tryNote(input);
     if (noteReply) return noteReply;
 
     const mathReply = tryMath(text);
