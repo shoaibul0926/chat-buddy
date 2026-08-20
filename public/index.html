@@ -282,14 +282,121 @@
   .agent-trace div {
     margin: 2px 0;
   }
+
+  #logoutBtn {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    display: none;
+  }
+
+  #logoutBtn:hover {
+    background: rgba(255,255,255,0.35);
+  }
+
+  #authOverlay {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 30px;
+    z-index: 20;
+  }
+
+  #authOverlay h2 {
+    margin: 0 0 4px;
+    color: #764ba2;
+  }
+
+  #authOverlay input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+  }
+
+  #authOverlay input:focus {
+    border-color: #764ba2;
+  }
+
+  #authForm {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #authSubmitBtn {
+    background: #764ba2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 11px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  #authSubmitBtn:hover {
+    background: #5f3d8a;
+  }
+
+  #authSubmitBtn:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  #authToggle {
+    background: none;
+    border: none;
+    color: #764ba2;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  #authError {
+    color: #c0392b;
+    font-size: 13px;
+    min-height: 16px;
+    text-align: center;
+  }
 </style>
 
 <div id="app">
   <header>
+    <button id="logoutBtn">Logout</button>
     🤖 Chat Buddy
     <div class="subtitle">🧠 AI Agent Mode: multi-step tasks &amp; memory</div>
     <button id="clearBtn">Clear</button>
   </header>
+
+  <div id="authOverlay">
+    <h2>🤖 Chat Buddy</h2>
+    <p style="margin:0; color:#666; font-size:13px;">Sign in to save your chats to your account</p>
+    <form id="authForm">
+      <input id="authUsername" type="text" placeholder="Username" autocomplete="username" required />
+      <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+      <div id="authError"></div>
+      <button id="authSubmitBtn" type="submit">Login</button>
+    </form>
+    <button id="authToggle">Need an account? Register</button>
+  </div>
+
   <div id="messages"></div>
   <div id="inputArea">
     <button id="attachBtn" title="Upload an image">📎</button>
@@ -315,26 +422,35 @@
   const webcamBtn = document.getElementById('webcamBtn');
   const micBtn = document.getElementById('micBtn');
   const appEl = document.getElementById('app');
+  const authOverlay = document.getElementById('authOverlay');
+  const authForm = document.getElementById('authForm');
+  const authUsername = document.getElementById('authUsername');
+  const authPassword = document.getElementById('authPassword');
+  const authError = document.getElementById('authError');
+  const authSubmitBtn = document.getElementById('authSubmitBtn');
+  const authToggle = document.getElementById('authToggle');
+  const logoutBtn = document.getElementById('logoutBtn');
 
   let userName = null;
   let notes = [];
 
-  const STORAGE_KEY = 'chatBuddyDB';
+  const TOKEN_KEY = 'chatBuddyToken';
   const MAX_HISTORY = 40;
   let history = [];
+  let authToken = localStorage.getItem(TOKEN_KEY) || null;
+  let authMode = 'login';
 
   function timestamp() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   function saveHistory() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, userName, notes }));
-    } catch (e) {
-      console.warn('Chat history storage is full, trimming oldest messages.', e);
-      history = history.slice(-10);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, userName, notes })); } catch (e2) {}
-    }
+    if (!authToken) return;
+    fetch('/api/data', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify({ history, userName, notes })
+    }).catch(e => console.warn('Could not save to server', e));
   }
 
   function pushHistory(entry) {
@@ -394,20 +510,93 @@
     else if (entry.type === 'html') addHtmlMessage(entry.html, entry.sender, opts);
   }
 
-  function loadHistory() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw);
-      userName = data.userName || null;
-      notes = Array.isArray(data.notes) ? data.notes : [];
-      history = Array.isArray(data.history) ? data.history : [];
-      if (history.length === 0) return false;
+  function hydrateFromData(data) {
+    messagesEl.innerHTML = '';
+    userName = data.userName || null;
+    notes = Array.isArray(data.notes) ? data.notes : [];
+    history = Array.isArray(data.history) ? data.history : [];
+    if (history.length === 0) {
+      addMessage("Hi am your chatbot! what I can do for you", 'bot');
+    } else {
       history.forEach(renderStoredEntry);
-      return true;
+    }
+  }
+
+  function showApp() {
+    authOverlay.style.display = 'none';
+    logoutBtn.style.display = 'block';
+  }
+
+  function showAuth(message) {
+    authOverlay.style.display = 'flex';
+    logoutBtn.style.display = 'none';
+    messagesEl.innerHTML = '';
+    authError.textContent = message || '';
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    authError.textContent = '';
+    if (mode === 'login') {
+      authSubmitBtn.textContent = 'Login';
+      authToggle.textContent = "Need an account? Register";
+      authPassword.autocomplete = 'current-password';
+    } else {
+      authSubmitBtn.textContent = 'Register';
+      authToggle.textContent = 'Already have an account? Login';
+      authPassword.autocomplete = 'new-password';
+    }
+  }
+
+  function setToken(token) {
+    authToken = token;
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+
+  function logout() {
+    authToken = null;
+    localStorage.removeItem(TOKEN_KEY);
+    authUsername.value = '';
+    authPassword.value = '';
+    setAuthMode('login');
+    showAuth();
+  }
+
+  async function loadFromServer() {
+    try {
+      const res = await fetch('/api/data', { headers: { Authorization: 'Bearer ' + authToken } });
+      if (!res.ok) throw new Error('unauthorized');
+      const data = await res.json();
+      hydrateFromData(data);
+      showApp();
     } catch (e) {
-      console.warn('Could not load chat history', e);
-      return false;
+      logout();
+    }
+  }
+
+  async function handleAuthSubmit(e) {
+    e.preventDefault();
+    const username = authUsername.value.trim();
+    const password = authPassword.value;
+    authError.textContent = '';
+    authSubmitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/' + authMode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        authError.textContent = data.error || 'Something went wrong.';
+        return;
+      }
+      setToken(data.token);
+      await loadFromServer();
+    } catch (err) {
+      authError.textContent = "Can't reach the server. Is it running?";
+    } finally {
+      authSubmitBtn.disabled = false;
     }
   }
 
@@ -844,10 +1033,15 @@
   clearBtn.addEventListener('click', () => {
     messagesEl.innerHTML = '';
     userName = null;
+    notes = [];
     history = [];
-    localStorage.removeItem(STORAGE_KEY);
+    saveHistory();
     addMessage("Chat cleared! I'm Chat Buddy again. What's your name?", 'bot');
   });
+
+  logoutBtn.addEventListener('click', logout);
+  authForm.addEventListener('submit', handleAuthSubmit);
+  authToggle.addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
 
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
@@ -883,8 +1077,10 @@
     }
   });
 
-  const restored = loadHistory();
-  if (!restored) {
-    addMessage("Hi am your chatbot! what I can do for you", 'bot');
+  setAuthMode('login');
+  if (authToken) {
+    loadFromServer();
+  } else {
+    showAuth();
   }
 </script>
