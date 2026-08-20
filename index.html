@@ -1,0 +1,890 @@
+<title>Chat Buddy</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  #app {
+    width: 380px;
+    height: 560px;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  header {
+    background: #764ba2;
+    color: white;
+    padding: 16px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    position: relative;
+  }
+
+  #clearBtn {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+
+  #clearBtn:hover {
+    background: rgba(255,255,255,0.35);
+  }
+
+  #messages {
+    flex: 1;
+    padding: 12px;
+    overflow-y: auto;
+    background: #f4f4f8;
+  }
+
+  .msg {
+    max-width: 75%;
+    margin: 6px 0;
+    padding: 10px 14px;
+    border-radius: 16px;
+    line-height: 1.4;
+    font-size: 14px;
+    white-space: pre-wrap;
+  }
+
+  .time {
+    display: block;
+    font-size: 10px;
+    opacity: 0.6;
+    margin-top: 4px;
+  }
+
+  .typing {
+    display: inline-flex;
+    gap: 4px;
+  }
+
+  .typing span {
+    width: 6px;
+    height: 6px;
+    background: #888;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+  }
+
+  .bot {
+    background: #e5e5ea;
+    color: #000;
+    border-bottom-left-radius: 4px;
+    margin-right: auto;
+  }
+
+  .user {
+    background: #764ba2;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+    margin-left: auto;
+  }
+
+  #inputArea {
+    display: flex;
+    border-top: 1px solid #ddd;
+    padding: 10px;
+    gap: 8px;
+  }
+
+  #userInput {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    font-size: 14px;
+    outline: none;
+  }
+
+  #sendBtn {
+    background: #764ba2;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 10px 18px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  #sendBtn:hover {
+    background: #5f3d8a;
+  }
+
+  #attachBtn {
+    background: #e5e5ea;
+    border: none;
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  #attachBtn:hover {
+    background: #d6d6db;
+  }
+
+  #videoAttachBtn, #webcamBtn {
+    background: #e5e5ea;
+    border: none;
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  #videoAttachBtn:hover, #webcamBtn:hover {
+    background: #d6d6db;
+  }
+
+  #micBtn {
+    background: #e5e5ea;
+    border: none;
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+
+  #micBtn:hover {
+    background: #d6d6db;
+  }
+
+  #micBtn.listening {
+    background: #e0405a;
+    color: white;
+    animation: pulse 1s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(224,64,90,0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(224,64,90,0); }
+  }
+
+  .msg img, .msg video {
+    max-width: 100%;
+    max-height: 180px;
+    border-radius: 10px;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  #webcamOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    z-index: 10;
+  }
+
+  #webcamOverlay video {
+    width: 88%;
+    border-radius: 10px;
+    background: #000;
+  }
+
+  .webcam-controls {
+    display: flex;
+    gap: 10px;
+  }
+
+  .webcam-controls button {
+    border: none;
+    border-radius: 20px;
+    padding: 10px 18px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  #captureBtn {
+    background: #764ba2;
+    color: white;
+  }
+
+  #captureBtn:hover {
+    background: #5f3d8a;
+  }
+
+  #cancelWebcamBtn {
+    background: #e5e5ea;
+    color: #333;
+  }
+
+  #cancelWebcamBtn:hover {
+    background: #d6d6db;
+  }
+
+  .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 6px;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+
+  .subtitle {
+    font-size: 11px;
+    font-weight: normal;
+    opacity: 0.8;
+    margin-top: 2px;
+  }
+
+  .agent-trace {
+    background: #f0eaf9 !important;
+    color: #5a3d80 !important;
+    font-size: 12px;
+    font-style: italic;
+    border: 1px dashed #c9b6e6;
+  }
+
+  .agent-trace div {
+    margin: 2px 0;
+  }
+</style>
+
+<div id="app">
+  <header>
+    🤖 Chat Buddy
+    <div class="subtitle">🧠 AI Agent Mode: multi-step tasks &amp; memory</div>
+    <button id="clearBtn">Clear</button>
+  </header>
+  <div id="messages"></div>
+  <div id="inputArea">
+    <button id="attachBtn" title="Upload an image">📎</button>
+    <input id="fileInput" type="file" accept="image/*" hidden />
+    <button id="videoAttachBtn" title="Upload a video">🎥</button>
+    <input id="videoFileInput" type="file" accept="video/*" hidden />
+    <button id="webcamBtn" title="Take a photo with your webcam">📷</button>
+    <button id="micBtn" title="Ask by voice">🎤</button>
+    <input id="userInput" type="text" placeholder="Type or paste a screenshot (Ctrl+V)..." autocomplete="off" />
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
+
+<script>
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('userInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const attachBtn = document.getElementById('attachBtn');
+  const fileInput = document.getElementById('fileInput');
+  const videoAttachBtn = document.getElementById('videoAttachBtn');
+  const videoFileInput = document.getElementById('videoFileInput');
+  const webcamBtn = document.getElementById('webcamBtn');
+  const micBtn = document.getElementById('micBtn');
+  const appEl = document.getElementById('app');
+
+  let userName = null;
+  let notes = [];
+
+  const STORAGE_KEY = 'chatBuddyDB';
+  const MAX_HISTORY = 40;
+  let history = [];
+
+  function timestamp() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function saveHistory() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, userName, notes }));
+    } catch (e) {
+      console.warn('Chat history storage is full, trimming oldest messages.', e);
+      history = history.slice(-10);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, userName, notes })); } catch (e2) {}
+    }
+  }
+
+  function pushHistory(entry) {
+    history.push(entry);
+    if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
+    saveHistory();
+  }
+
+  function addMessage(text, sender, opts = {}) {
+    const time = opts.time || timestamp();
+    const div = document.createElement('div');
+    div.className = 'msg ' + sender;
+    div.textContent = text;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'time';
+    timeEl.textContent = time;
+    div.appendChild(timeEl);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (opts.save !== false) pushHistory({ type: 'text', sender, text, time });
+  }
+
+  function addImageMessage(dataUrl, sender, opts = {}) {
+    const time = opts.time || timestamp();
+    const div = document.createElement('div');
+    div.className = 'msg ' + sender;
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    div.appendChild(img);
+    const timeEl = document.createElement('span');
+    timeEl.className = 'time';
+    timeEl.textContent = time;
+    div.appendChild(timeEl);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (opts.save !== false) pushHistory({ type: 'image', sender, dataUrl, time });
+  }
+
+  function addHtmlMessage(html, sender, opts = {}) {
+    const time = opts.time || timestamp();
+    const div = document.createElement('div');
+    div.className = 'msg ' + sender + (opts.extraClass ? ' ' + opts.extraClass : '');
+    div.innerHTML = html;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'time';
+    timeEl.textContent = time;
+    div.appendChild(timeEl);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (opts.save !== false) pushHistory({ type: 'html', sender, html, time, extraClass: opts.extraClass });
+  }
+
+  function renderStoredEntry(entry) {
+    const opts = { save: false, time: entry.time, extraClass: entry.extraClass };
+    if (entry.type === 'text') addMessage(entry.text, entry.sender, opts);
+    else if (entry.type === 'image') addImageMessage(entry.dataUrl, entry.sender, opts);
+    else if (entry.type === 'html') addHtmlMessage(entry.html, entry.sender, opts);
+  }
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      userName = data.userName || null;
+      notes = Array.isArray(data.notes) ? data.notes : [];
+      history = Array.isArray(data.history) ? data.history : [];
+      if (history.length === 0) return false;
+      history.forEach(renderStoredEntry);
+      return true;
+    } catch (e) {
+      console.warn('Could not load chat history', e);
+      return false;
+    }
+  }
+
+  function showTyping() {
+    const div = document.createElement('div');
+    div.className = 'msg bot typing-wrap';
+    div.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  const rules = [
+    { patterns: ['hello', 'hi', 'hey'], replies: ['Hi there! How are you today?', 'Hello! Nice to see you.'] },
+    { patterns: ['how are you'], replies: ["I'm just code, but I'm doing great! How about you?"] },
+    { patterns: ['your name'], replies: ["I'm Chat Buddy, your friendly bot!"] },
+    { patterns: ['bye', 'goodbye'], replies: ['Goodbye! Have a great day!', 'See you later!'] },
+    { patterns: ['thanks', 'thank you'], replies: ["You're welcome!"] },
+    { patterns: ['joke'], replies: ['Why do programmers prefer dark mode? Because light attracts bugs!'] },
+    { patterns: ['weather'], replies: ["I can't check the weather, but I hope it's sunny where you are!"] },
+    { patterns: ['time'], replies: [() => `It's currently ${new Date().toLocaleTimeString()}.`] },
+    { patterns: ['date', 'today'], replies: [() => `Today's date is ${new Date().toLocaleDateString()}.`] },
+    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), and handle multi-step requests like "what\'s the time and what is 5 + 3"!'] }
+  ];
+
+  const fallbacks = [
+    "I'm not sure I understand. Can you rephrase that?",
+    "Interesting! Tell me more.",
+    "Hmm, I don't have an answer for that yet."
+  ];
+
+  function tryMath(text) {
+    const match = text.match(/(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)/);
+    if (!match) return null;
+    const [, a, op, b] = match;
+    const x = parseFloat(a), y = parseFloat(b);
+    let result;
+    if (op === '+') result = x + y;
+    else if (op === '-') result = x - y;
+    else if (op === '*') result = x * y;
+    else if (op === '/') result = y !== 0 ? x / y : null;
+    if (result === null) return "I can't divide by zero!";
+    return `That equals ${result}`;
+  }
+
+  function tryName(text) {
+    const match = text.match(/my name is (\w+)/i) || text.match(/i'?m (\w+)/i);
+    if (match) {
+      userName = match[1];
+      return `Nice to meet you, ${userName}!`;
+    }
+    if (/what('?s| is) my name/i.test(text)) {
+      return userName ? `Your name is ${userName}!` : "I don't know your name yet. Tell me with 'my name is ...'";
+    }
+    return null;
+  }
+
+  function tryNote(text) {
+    const match = text.match(/remember that (.+)/i);
+    if (match) {
+      notes.push(match[1].trim());
+      saveHistory();
+      return `Got it, I'll remember: "${match[1].trim()}"`;
+    }
+    if (/what do you remember|what have i told you/i.test(text)) {
+      return notes.length
+        ? `Here's what I remember:\n- ${notes.join('\n- ')}`
+        : "I don't have anything saved yet. Try 'remember that ...'";
+    }
+    if (/forget (everything|it all)/i.test(text)) {
+      notes = [];
+      saveHistory();
+      return "Okay, I've forgotten everything you told me to remember.";
+    }
+    return null;
+  }
+
+  const namedColors = [
+    { name: 'red', rgb: [220, 20, 20] },
+    { name: 'orange', rgb: [230, 130, 30] },
+    { name: 'yellow', rgb: [220, 210, 30] },
+    { name: 'green', rgb: [40, 160, 60] },
+    { name: 'cyan', rgb: [40, 190, 200] },
+    { name: 'blue', rgb: [40, 80, 210] },
+    { name: 'purple', rgb: [130, 50, 180] },
+    { name: 'pink', rgb: [230, 130, 180] },
+    { name: 'brown', rgb: [110, 70, 40] },
+    { name: 'white', rgb: [240, 240, 240] },
+    { name: 'gray', rgb: [130, 130, 130] },
+    { name: 'black', rgb: [20, 20, 20] }
+  ];
+
+  function closestColorName(r, g, b) {
+    let best = null, bestDist = Infinity;
+    for (const c of namedColors) {
+      const d = (r - c.rgb[0]) ** 2 + (g - c.rgb[1]) ** 2 + (b - c.rgb[2]) ** 2;
+      if (d < bestDist) { bestDist = d; best = c.name; }
+    }
+    return best;
+  }
+
+  function analyzeImage(file) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const w = canvas.width = 60;
+        const h = canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        let r = 0, g = 0, b = 0, count = 0;
+        const data = ctx.getImageData(0, 0, w, h).data;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i]; g += data[i + 1]; b += data[i + 2];
+          count++;
+        }
+        r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
+
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        const brightnessLabel = brightness > 180 ? 'bright' : brightness > 90 ? 'medium brightness' : 'dark';
+        const orientation = img.naturalWidth > img.naturalHeight ? 'landscape'
+          : img.naturalWidth < img.naturalHeight ? 'portrait' : 'square';
+        const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+
+        resolve({
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          sizeKb: (file.size / 1024).toFixed(1),
+          type: file.type || 'unknown',
+          colorName: closestColorName(r, g, b),
+          hex,
+          brightnessLabel,
+          orientation
+        });
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  function handleImageUpload(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      addImageMessage(e.target.result, 'user');
+      const typingEl = showTyping();
+
+      analyzeImage(file).then(info => {
+        typingEl.remove();
+        const html =
+          `<span class="swatch" style="background:${info.hex}"></span>` +
+          `Here's what I see:<br>` +
+          `Size: ${info.width}×${info.height}px (${info.orientation})<br>` +
+          `File size: ${info.sizeKb} KB (${info.type})<br>` +
+          `Dominant color: ${info.colorName} (${info.hex})<br>` +
+          `Overall tone: ${info.brightnessLabel}`;
+        addHtmlMessage(html, 'bot');
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function addVideoMessage(url, sender) {
+    const time = timestamp();
+    const div = document.createElement('div');
+    div.className = 'msg ' + sender;
+    const video = document.createElement('video');
+    video.src = url;
+    video.controls = true;
+    div.appendChild(video);
+    const timeEl = document.createElement('span');
+    timeEl.className = 'time';
+    timeEl.textContent = time;
+    div.appendChild(timeEl);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function formatDuration(sec) {
+    if (!isFinite(sec)) return 'unknown';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+
+  function analyzeVideo(file) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.src = URL.createObjectURL(file);
+
+      video.onloadedmetadata = () => {
+        video.currentTime = Math.min(1, (video.duration || 0) / 2);
+      };
+
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        const w = canvas.width = 60;
+        const h = canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, w, h);
+
+        let r = 0, g = 0, b = 0, count = 0;
+        const data = ctx.getImageData(0, 0, w, h).data;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i]; g += data[i + 1]; b += data[i + 2];
+          count++;
+        }
+        r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
+
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        const brightnessLabel = brightness > 180 ? 'bright' : brightness > 90 ? 'medium brightness' : 'dark';
+        const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+
+        resolve({
+          width: video.videoWidth,
+          height: video.videoHeight,
+          durationLabel: formatDuration(video.duration),
+          sizeKb: (file.size / 1024).toFixed(1),
+          type: file.type || 'unknown',
+          colorName: closestColorName(r, g, b),
+          hex,
+          brightnessLabel
+        });
+      };
+
+      video.onerror = () => reject(new Error('Could not load video'));
+    });
+  }
+
+  function handleVideoUpload(file) {
+    if (!file || !file.type.startsWith('video/')) return;
+    const url = URL.createObjectURL(file);
+    addVideoMessage(url, 'user');
+    const typingEl = showTyping();
+
+    analyzeVideo(file).then(info => {
+      typingEl.remove();
+      const html =
+        `<span class="swatch" style="background:${info.hex}"></span>` +
+        `Here's what I found in the video:<br>` +
+        `Resolution: ${info.width}×${info.height}px<br>` +
+        `Duration: ${info.durationLabel}<br>` +
+        `File size: ${info.sizeKb} KB (${info.type})<br>` +
+        `Frame tone: ${info.brightnessLabel} (dominant color ${info.colorName})`;
+      addHtmlMessage(html, 'bot');
+    }).catch(() => {
+      typingEl.remove();
+      addMessage("Sorry, I couldn't analyze that video.", 'bot');
+    });
+  }
+
+  let webcamStream = null;
+
+  function closeWebcam(overlay) {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(t => t.stop());
+      webcamStream = null;
+    }
+    overlay.remove();
+  }
+
+  function openWebcam() {
+    const overlay = document.createElement('div');
+    overlay.id = 'webcamOverlay';
+    overlay.innerHTML =
+      '<video id="webcamVideo" autoplay playsinline></video>' +
+      '<div class="webcam-controls">' +
+      '<button id="captureBtn">📸 Capture</button>' +
+      '<button id="cancelWebcamBtn">Cancel</button>' +
+      '</div>';
+    appEl.appendChild(overlay);
+    const webcamVideo = overlay.querySelector('#webcamVideo');
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        webcamStream = stream;
+        webcamVideo.srcObject = stream;
+      })
+      .catch(err => {
+        overlay.remove();
+        addMessage("I couldn't access your webcam: " + err.message, 'bot');
+      });
+
+    overlay.querySelector('#captureBtn').addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = webcamVideo.videoWidth;
+      canvas.height = webcamVideo.videoHeight;
+      canvas.getContext('2d').drawImage(webcamVideo, 0, 0);
+      canvas.toBlob(blob => {
+        const file = new File([blob], 'webcam-photo.png', { type: 'image/png' });
+        closeWebcam(overlay);
+        handleImageUpload(file);
+      }, 'image/png');
+    });
+
+    overlay.querySelector('#cancelWebcamBtn').addEventListener('click', () => closeWebcam(overlay));
+  }
+
+  const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let isListening = false;
+
+  if (SpeechRecognitionAPI) {
+    recognition = new SpeechRecognitionAPI();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onresult = e => {
+      let transcript = '';
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      inputEl.value = transcript;
+      if (e.results[e.results.length - 1].isFinal) {
+        handleSend();
+      }
+    };
+
+    recognition.onerror = e => {
+      stopListening();
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        addMessage("I couldn't hear that (" + e.error + "). Try typing instead.", 'bot');
+      }
+    };
+
+    recognition.onend = () => stopListening();
+  }
+
+  function startListening() {
+    if (!recognition) {
+      addMessage("Voice input isn't supported in this browser. Try Chrome or Edge, or just type your question.", 'bot');
+      return;
+    }
+    isListening = true;
+    micBtn.classList.add('listening');
+    inputEl.placeholder = 'Listening... speak now';
+    inputEl.value = '';
+    recognition.start();
+  }
+
+  function stopListening() {
+    isListening = false;
+    micBtn.classList.remove('listening');
+    inputEl.placeholder = 'Type or paste a screenshot (Ctrl+V)...';
+    if (recognition) {
+      try { recognition.stop(); } catch (e) {}
+    }
+  }
+
+  function getReply(input) {
+    const text = input.toLowerCase();
+
+    const nameReply = tryName(text);
+    if (nameReply) return nameReply;
+
+    const noteReply = tryNote(text);
+    if (noteReply) return noteReply;
+
+    const mathReply = tryMath(text);
+    if (mathReply) return mathReply;
+
+    for (const rule of rules) {
+      if (rule.patterns.some(p => text.includes(p))) {
+        const reply = rule.replies[Math.floor(Math.random() * rule.replies.length)];
+        return typeof reply === 'function' ? reply() : reply;
+      }
+    }
+
+    const fallback = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    return userName ? `${fallback} (${userName})` : fallback;
+  }
+
+  // Agent system: breaks a message into sub-tasks and routes each one
+  // through the right tool (name/notes/math/rules), tracing its steps.
+  function splitTasks(text) {
+    return text.split(/\s*,\s*|\s+and\s+|\s+then\s+/i).map(t => t.trim()).filter(Boolean);
+  }
+
+  function pickToolName(task) {
+    const t = task.toLowerCase();
+    if (/remember that|what do you remember|forget/.test(t)) return 'Memory';
+    if (/my name is|i'?m \w+|what('?s| is) my name/.test(t)) return 'Name';
+    if (/\d+\s*[+\-*/]\s*\d+/.test(t)) return 'Calculator';
+    if (/time/.test(t)) return 'Clock';
+    if (/date|today/.test(t)) return 'Calendar';
+    if (/joke/.test(t)) return 'Joke teller';
+    return 'General chat';
+  }
+
+  function runAgent(input) {
+    const tasks = splitTasks(input);
+    if (tasks.length <= 1) {
+      return { steps: [], reply: getReply(input) };
+    }
+    const steps = [];
+    const answers = [];
+    tasks.forEach((task, i) => {
+      const tool = pickToolName(task);
+      steps.push(`Step ${i + 1}: "${task}" → using ${tool} tool`);
+      answers.push(getReply(task));
+    });
+    return { steps, reply: answers.join(' ') };
+  }
+
+  function handleSend() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    addMessage(text, 'user');
+    inputEl.value = '';
+    sendBtn.disabled = true;
+
+    const typingEl = showTyping();
+    setTimeout(() => {
+      typingEl.remove();
+      const { steps, reply } = runAgent(text);
+      if (steps.length) {
+        const traceHtml = '🧠 <b>Agent plan:</b>' + steps.map(s => `<div>${s}</div>`).join('');
+        addHtmlMessage(traceHtml, 'bot', { extraClass: 'agent-trace' });
+      }
+      addMessage(reply, 'bot');
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }, 500 + Math.random() * 400);
+  }
+
+  sendBtn.addEventListener('click', handleSend);
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleSend();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    messagesEl.innerHTML = '';
+    userName = null;
+    history = [];
+    localStorage.removeItem(STORAGE_KEY);
+    addMessage("Chat cleared! I'm Chat Buddy again. What's your name?", 'bot');
+  });
+
+  attachBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleImageUpload(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  videoAttachBtn.addEventListener('click', () => videoFileInput.click());
+  videoFileInput.addEventListener('change', () => {
+    if (videoFileInput.files[0]) handleVideoUpload(videoFileInput.files[0]);
+    videoFileInput.value = '';
+  });
+
+  webcamBtn.addEventListener('click', openWebcam);
+
+  micBtn.addEventListener('click', () => {
+    if (isListening) stopListening();
+    else startListening();
+  });
+
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          handleImageUpload(file);
+          e.preventDefault();
+        }
+        break;
+      }
+    }
+  });
+
+  const restored = loadHistory();
+  if (!restored) {
+    addMessage("Hi am your chatbot! what I can do for you", 'bot');
+  }
+</script>
