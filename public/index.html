@@ -1933,6 +1933,42 @@
     return /\?\s*$/.test(text.trim()) || /^(what|who|when|where|why|how|does|is|tell me|summarize|explain)\b/i.test(text.trim());
   }
 
+  // Broader than looksLikeQuestion: catches generic "tell me about it"-style
+  // requests anywhere in the sentence ("can you verify this and tell me about
+  // it"), not just ones that start with a trigger word or end in "?".
+  function looksLikeFileIntent(text) {
+    const t = text.trim();
+    return /\b(verify|analyz|analys|describe|summariz|summaris|inspect|review)\b/i.test(t) ||
+      /tell me about (this|it|the file|the document|the image|the pdf|the docx)/i.test(t) ||
+      /what('?s| is) (this|it) about/i.test(t) ||
+      /what('?s| is) in (this|it|the file|the document|the image)/i.test(t);
+  }
+
+  async function getFileOverview() {
+    if (!userFiles.length) return "I don't have any files to tell you about yet — upload one first!";
+    const mostRecent = userFiles[userFiles.length - 1];
+    try {
+      const res = await fetch('/api/files/' + mostRecent.id, { headers: { Authorization: 'Bearer ' + authToken } });
+      if (!res.ok) return `I have "${mostRecent.name}" stored, but couldn't load its details right now.`;
+      const data = await res.json();
+      if (data.meta) {
+        const objs = [...new Set((data.meta.objects || []).map(o => o.class))];
+        let overview = `Here's "${mostRecent.name}": ${data.meta.caption || ''}`;
+        if (objs.length) overview += ` Objects detected: ${objs.join(', ')}.`;
+        if (data.meta.ocrText) {
+          const ocrSnippet = data.meta.ocrText.slice(0, 200);
+          overview += ` Text found: "${ocrSnippet}${data.meta.ocrText.length > 200 ? '…' : ''}"`;
+        }
+        return overview;
+      }
+      const text = (data.text || '').trim();
+      const snippet = text.slice(0, 300);
+      return `Here's "${mostRecent.name}": ${snippet}${text.length > 300 ? '…' : ''}`;
+    } catch (e) {
+      return `I have "${mostRecent.name}" stored, but couldn't load its details right now.`;
+    }
+  }
+
   async function tryFileQA(question) {
     try {
       const res = await fetch('/api/ask-files', {
@@ -2208,10 +2244,18 @@
       let steps = [];
       let reply;
 
-      if (userFiles.length > 0 && looksLikeQuestion(text) && !EXPLICIT_TOOL_PATTERN.test(text)) {
+      const fileIntent = userFiles.length > 0 && looksLikeFileIntent(text);
+      const generalQuestion = userFiles.length > 0 && looksLikeQuestion(text);
+
+      if ((fileIntent || generalQuestion) && !EXPLICIT_TOOL_PATTERN.test(text)) {
         const fileAnswer = await tryFileQA(text);
         if (fileAnswer) {
           reply = fileAnswer;
+        } else if (fileIntent) {
+          // A clear "verify/summarize/describe/tell me about it"-style request
+          // with no specific keyword match — give an overview instead of
+          // falling through to an unrelated generic chatbot reply.
+          reply = await getFileOverview();
         } else {
           ({ steps, reply } = runAgent(text));
         }

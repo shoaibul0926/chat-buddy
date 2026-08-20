@@ -437,6 +437,17 @@ app.get('/api/search', requireAuth, (req, res) => {
   res.json({ results: results.slice(0, 50) });
 });
 
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'That file is too large — 10MB max.' });
+    }
+    return res.status(400).json({ error: 'Upload failed: ' + err.message });
+  }
+  console.error(err);
+  res.status(500).json({ error: 'Something went wrong on the server.' });
+});
+
 app.listen(PORT, () => {
   console.log(`Chat Buddy server running at http://localhost:${PORT}`);
 });
