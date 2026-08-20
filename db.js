@@ -2,7 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DB_FILE = path.join(__dirname, 'data.json');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DB_FILE = path.join(DATA_DIR, 'data.json');
+fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function migrateUser(user) {
   let changed = false;

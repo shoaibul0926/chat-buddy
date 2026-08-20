@@ -16,7 +16,8 @@ const db = require('./db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DOC_EXTENSIONS = ['.pdf', '.docx', '.txt'];
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.gif'];
 const ALLOWED_EXTENSIONS = [...DOC_EXTENSIONS, ...IMAGE_EXTENSIONS];
