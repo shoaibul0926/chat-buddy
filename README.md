@@ -41,6 +41,17 @@ data.json       Created automatically on first run (git-ignored)
 | `POST /api/login` | — | `{ username, password }` | returns `{ token }` |
 | `GET /api/data` | Bearer token | — | returns `{ history, userName, notes }` |
 | `PUT /api/data` | Bearer token | `{ history, userName, notes }` | overwrites the user's saved state |
+| `POST /api/files` | Bearer token | multipart `file` field | uploads a PDF/DOCX/TXT (10MB max), extracts and stores its text |
+| `GET /api/files` | Bearer token | — | lists the user's uploaded files (metadata only) |
+| `GET /api/files/:id` | Bearer token | — | returns the file's full extracted text |
+| `GET /api/files/:id/download` | Bearer token | — | streams the original file (inline, for preview) |
+| `POST /api/ask-files` | Bearer token | `{ question }` | searches the user's uploaded files for the best-matching sentence |
+
+## Phase 1: Document & File Intelligence
+
+- **Upload**: PDF, DOCX, or TXT via the 📄 button. Files are stored per-user on disk (`uploads/<userId>/`) and their text is extracted server-side with `pdf-parse` and `mammoth`.
+- **Preview**: PDFs open in the browser's native PDF viewer in a new tab; DOCX/TXT show an extracted-text preview inline in the chat.
+- **Ask questions**: after uploading, ask a question ending in "?" or starting with what/who/when/where/why/how/does/is/tell me/summarize/explain. The backend does a simple keyword-overlap search across the sentences of all your uploaded files and returns the best match with its source filename. This is extractive keyword search, not a real LLM — it finds the most relevant sentence, it doesn't generate a synthesized answer.
 
 ## Deploying
 

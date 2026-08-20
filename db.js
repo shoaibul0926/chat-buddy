@@ -30,7 +30,8 @@ function createUser(username, passwordHash) {
     id: db.nextUserId++,
     username,
     passwordHash,
-    data: { history: [], userName: null, notes: [] }
+    data: { history: [], userName: null, notes: [] },
+    files: []
   };
   db.users.push(user);
   save(db);
@@ -46,4 +47,27 @@ function saveUserData(id, data) {
   return true;
 }
 
-module.exports = { findUserByUsername, findUserById, createUser, saveUserData };
+function addFile(userId, fileRecord) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return false;
+  if (!Array.isArray(user.files)) user.files = [];
+  user.files.push(fileRecord);
+  save(db);
+  return true;
+}
+
+function listFiles(userId) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  return user && Array.isArray(user.files) ? user.files : [];
+}
+
+function getFile(userId, fileId) {
+  return listFiles(userId).find(f => f.id === fileId) || null;
+}
+
+module.exports = {
+  findUserByUsername, findUserById, createUser, saveUserData,
+  addFile, listFiles, getFile
+};

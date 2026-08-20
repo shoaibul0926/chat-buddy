@@ -1,7 +1,7 @@
 {
   "name": "chat-buddy",
   "version": "1.0.0",
-  "description": "Chat Buddy: a chatbot with a Node/Express + SQLite backend for real user accounts and server-side persistence.",
+  "description": "Chat Buddy: a chatbot with a Node/Express backend for real user accounts, server-side persistence, and document intelligence (PDF/DOCX/TXT).",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +10,9 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.12.1",
+    "multer": "^2.2.0",
+    "pdf-parse": "^2.4.5"
   }
 }

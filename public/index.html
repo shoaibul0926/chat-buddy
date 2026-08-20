@@ -155,7 +155,7 @@
     background: #d6d6db;
   }
 
-  #videoAttachBtn, #webcamBtn {
+  #videoAttachBtn, #webcamBtn, #docAttachBtn {
     background: #e5e5ea;
     border: none;
     border-radius: 50%;
@@ -166,8 +166,34 @@
     flex-shrink: 0;
   }
 
-  #videoAttachBtn:hover, #webcamBtn:hover {
+  #videoAttachBtn:hover, #webcamBtn:hover, #docAttachBtn:hover {
     background: #d6d6db;
+  }
+
+  .preview-btn {
+    margin-top: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 14px;
+    background: #764ba2;
+    color: white;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .preview-btn:hover {
+    background: #5f3d8a;
+  }
+
+  .file-preview-text {
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 12px;
+    margin-top: 6px;
+    background: rgba(0,0,0,0.04);
+    padding: 8px;
+    border-radius: 8px;
   }
 
   #micBtn {
@@ -404,6 +430,8 @@
     <button id="videoAttachBtn" title="Upload a video">🎥</button>
     <input id="videoFileInput" type="file" accept="video/*" hidden />
     <button id="webcamBtn" title="Take a photo with your webcam">📷</button>
+    <button id="docAttachBtn" title="Upload a PDF, DOCX, or TXT file">📄</button>
+    <input id="docFileInput" type="file" accept=".pdf,.docx,.txt" hidden />
     <button id="micBtn" title="Ask by voice">🎤</button>
     <input id="userInput" type="text" placeholder="Type or paste a screenshot (Ctrl+V)..." autocomplete="off" />
     <button id="sendBtn">Send</button>
@@ -420,8 +448,18 @@
   const videoAttachBtn = document.getElementById('videoAttachBtn');
   const videoFileInput = document.getElementById('videoFileInput');
   const webcamBtn = document.getElementById('webcamBtn');
+  const docAttachBtn = document.getElementById('docAttachBtn');
+  const docFileInput = document.getElementById('docFileInput');
   const micBtn = document.getElementById('micBtn');
   const appEl = document.getElementById('app');
+
+  let userFiles = [];
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   const authOverlay = document.getElementById('authOverlay');
   const authForm = document.getElementById('authForm');
   const authUsername = document.getElementById('authUsername');
@@ -555,11 +593,23 @@
 
   function logout() {
     authToken = null;
+    userFiles = [];
     localStorage.removeItem(TOKEN_KEY);
     authUsername.value = '';
     authPassword.value = '';
     setAuthMode('login');
     showAuth();
+  }
+
+  async function loadUserFiles() {
+    try {
+      const res = await fetch('/api/files', { headers: { Authorization: 'Bearer ' + authToken } });
+      if (!res.ok) { userFiles = []; return; }
+      const data = await res.json();
+      userFiles = Array.isArray(data.files) ? data.files : [];
+    } catch (e) {
+      userFiles = [];
+    }
   }
 
   async function loadFromServer() {
@@ -568,6 +618,7 @@
       if (!res.ok) throw new Error('unauthorized');
       const data = await res.json();
       hydrateFromData(data);
+      await loadUserFiles();
       showApp();
     } catch (e) {
       logout();
@@ -619,7 +670,7 @@
     { patterns: ['weather'], replies: ["I can't check the weather, but I hope it's sunny where you are!"] },
     { patterns: ['time'], replies: [() => `It's currently ${new Date().toLocaleTimeString()}.`] },
     { patterns: ['date', 'today'], replies: [() => `Today's date is ${new Date().toLocaleDateString()}.`] },
-    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), and handle multi-step requests like "what\'s the time and what is 5 + 3"!'] }
+    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), handle multi-step requests, and read PDF/DOCX/TXT files you upload — just ask me a question about one afterward!'] }
   ];
 
   const fallbacks = [
@@ -757,6 +808,93 @@
       });
     };
     reader.readAsDataURL(file);
+  }
+
+  const DOC_ICONS = { pdf: '📕', docx: '📘', txt: '📃' };
+
+  async function handleDocUpload(file) {
+    if (!file) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!['pdf', 'docx', 'txt'].includes(ext)) {
+      addMessage("I can only read PDF, DOCX, or TXT files.", 'bot');
+      return;
+    }
+    if (!authToken) return;
+    const typingEl = showTyping();
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/files', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + authToken },
+        body: formData
+      });
+      const data = await res.json();
+      typingEl.remove();
+      if (!res.ok) {
+        addMessage(data.error || "Sorry, I couldn't process that file.", 'bot');
+        return;
+      }
+      userFiles.push({ id: data.file.id, name: data.file.name, type: data.file.type, size: data.file.size });
+      const icon = DOC_ICONS[data.file.type] || '📄';
+      const html =
+        `${icon} <b>${escapeHtml(data.file.name)}</b><br>` +
+        `${(data.file.size / 1024).toFixed(1)} KB • ${data.file.type.toUpperCase()}<br>` +
+        `<button class="preview-btn" onclick="previewFile('${data.file.id}')">👁 Preview</button>`;
+      addHtmlMessage(html, 'user');
+      addMessage(`Got it! I've stored "${data.file.name}" — ask me anything about it.`, 'bot');
+    } catch (e) {
+      typingEl.remove();
+      addMessage("Sorry, I couldn't reach the server to upload that file.", 'bot');
+    }
+  }
+
+  window.previewFile = async function (fileId) {
+    const meta = userFiles.find(f => f.id === fileId);
+    if (!meta || !authToken) return;
+    try {
+      if (meta.type === 'pdf') {
+        const res = await fetch('/api/files/' + fileId + '/download', {
+          headers: { Authorization: 'Bearer ' + authToken }
+        });
+        if (!res.ok) { addMessage("Couldn't load that file for preview.", 'bot'); return; }
+        const blob = await res.blob();
+        window.open(URL.createObjectURL(blob), '_blank');
+      } else {
+        const res = await fetch('/api/files/' + fileId, {
+          headers: { Authorization: 'Bearer ' + authToken }
+        });
+        if (!res.ok) { addMessage("Couldn't load that file for preview.", 'bot'); return; }
+        const data = await res.json();
+        const text = data.text || '';
+        const snippet = escapeHtml(text.slice(0, 2000)) + (text.length > 2000 ? '…' : '');
+        const html =
+          `📄 <b>${escapeHtml(meta.name)}</b> (text preview):` +
+          `<div class="file-preview-text">${snippet}</div>`;
+        addHtmlMessage(html, 'bot');
+      }
+    } catch (e) {
+      addMessage("Couldn't load that file for preview.", 'bot');
+    }
+  };
+
+  function looksLikeQuestion(text) {
+    return /\?\s*$/.test(text.trim()) || /^(what|who|when|where|why|how|does|is|tell me|summarize|explain)\b/i.test(text.trim());
+  }
+
+  async function tryFileQA(question) {
+    try {
+      const res = await fetch('/api/ask-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+        body: JSON.stringify({ question })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.answer ? `📄 From "${data.source}": ${data.answer}` : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function addVideoMessage(url, sender) {
@@ -1004,6 +1142,8 @@
     return { steps, reply: answers.join(' ') };
   }
 
+  const EXPLICIT_TOOL_PATTERN = /my name is|i'?m \w+|what('?s| is) my name|remember that|what do you remember|forget (everything|it all)|\d+\s*[+\-*/]\s*\d+/i;
+
   function handleSend() {
     const text = inputEl.value.trim();
     if (!text) return;
@@ -1012,9 +1152,22 @@
     sendBtn.disabled = true;
 
     const typingEl = showTyping();
-    setTimeout(() => {
+    setTimeout(async () => {
       typingEl.remove();
-      const { steps, reply } = runAgent(text);
+      let steps = [];
+      let reply;
+
+      if (userFiles.length > 0 && looksLikeQuestion(text) && !EXPLICIT_TOOL_PATTERN.test(text)) {
+        const fileAnswer = await tryFileQA(text);
+        if (fileAnswer) {
+          reply = fileAnswer;
+        } else {
+          ({ steps, reply } = runAgent(text));
+        }
+      } else {
+        ({ steps, reply } = runAgent(text));
+      }
+
       if (steps.length) {
         const traceHtml = '🧠 <b>Agent plan:</b>' + steps.map(s => `<div>${s}</div>`).join('');
         addHtmlMessage(traceHtml, 'bot', { extraClass: 'agent-trace' });
@@ -1056,6 +1209,12 @@
   });
 
   webcamBtn.addEventListener('click', openWebcam);
+
+  docAttachBtn.addEventListener('click', () => docFileInput.click());
+  docFileInput.addEventListener('change', () => {
+    if (docFileInput.files[0]) handleDocUpload(docFileInput.files[0]);
+    docFileInput.value = '';
+  });
 
   micBtn.addEventListener('click', () => {
     if (isListening) stopListening();
