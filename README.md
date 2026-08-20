@@ -91,14 +91,16 @@ Note: `@tensorflow/tfjs-node` (the fast, native-accelerated backend) was tried f
 
 ## Deploying
 
-Currently deployed on **Railway** at https://chat-buddy-production.up.railway.app (project: `chat-buddy`, service auto-deploys from this repo via `railway up`; `JWT_SECRET` is set as an environment variable there).
+Currently deployed on **Railway** at https://chat-buddy-production.up.railway.app (project: `chat-buddy`, deployed via `railway up`; `JWT_SECRET` and `DATA_DIR=/data` are set as environment variables there).
+
+**Persistent storage**: `data.json` and `uploads/` are written under the path in the `DATA_DIR` environment variable (defaults to the app directory, so local dev is unaffected). On Railway, `DATA_DIR` points at a mounted volume (`chat-buddy-volume`, 500MB, mount path `/data`) so accounts and files survive container restarts — not just code redeploys. Earlier versions of this app stored everything on the container's local disk with no volume, which meant registered accounts could disappear after *any* restart (idle sleep, crash-restart, OOM), not only a deploy — that bug is fixed as of the volume + `DATA_DIR` change.
 
 GitHub Pages won't work for this app (no backend) — the repo page's README is just documentation, not the live app. To redeploy elsewhere, any host that runs Node works, e.g. [Render](https://render.com) or [Fly.io](https://fly.io):
 
 - Build command: `npm install`
 - Start command: `npm start`
 - Set the `JWT_SECRET` environment variable to a long random string.
-- Note: `data.json` and `uploads/` live on local disk, so on most hosts (including Railway's default filesystem) they reset on redeploy — fine for a demo, not for production data you care about keeping.
+- **Attach a persistent volume/disk and set `DATA_DIR` to its mount path.** Without this, accounts and uploaded files will be lost whenever the container restarts — this bit us once already on Railway before the volume was added.
 
 ## Known limitations
 
