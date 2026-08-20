@@ -4,11 +4,44 @@ const crypto = require('crypto');
 
 const DB_FILE = path.join(__dirname, 'data.json');
 
+function migrateUser(user) {
+  let changed = false;
+  const now = new Date().toISOString();
+
+  if (!user.createdAt) { user.createdAt = now; changed = true; }
+  if (!user.profile) {
+    user.profile = { displayName: user.username, avatar: '🤖', theme: 'light' };
+    changed = true;
+  }
+  if (!user.folders) { user.folders = []; changed = true; }
+  if (!user.conversations) {
+    const legacyHistory = user.data && Array.isArray(user.data.history) ? user.data.history : [];
+    user.conversations = [{
+      id: crypto.randomUUID(),
+      title: 'New Chat',
+      folderId: null,
+      history: legacyHistory,
+      userName: (user.data && user.data.userName) || null,
+      notes: (user.data && user.data.notes) || [],
+      createdAt: now,
+      updatedAt: now
+    }];
+    changed = true;
+  }
+  if (!user.files) { user.files = []; changed = true; }
+
+  return changed;
+}
+
 function load() {
   if (!fs.existsSync(DB_FILE)) {
     return { users: [], nextUserId: 1 };
   }
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  let changed = false;
+  db.users.forEach(u => { if (migrateUser(u)) changed = true; });
+  if (changed) save(db);
+  return db;
 }
 
 function save(db) {
