@@ -191,19 +191,29 @@ function words(text) {
   return (text.toLowerCase().match(/[a-z]+|[0-9]+/g) || []).filter(w => !STOPWORDS.has(w));
 }
 
+const MAX_ANSWER_LENGTH = 400;
+
 function findAnswer(files, question) {
   const qWords = words(question);
   if (!qWords.length) return null;
   let best = null;
   for (const f of files) {
-    const sentences = (f.text || '').split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
-    for (const s of sentences) {
+    // Split on sentence punctuation AND newlines — plain prose (PDFs/DOCX
+    // with real sentences) splits fine on punctuation alone, but slide decks,
+    // bullet lists, and code snippets often have little to no punctuation,
+    // so without the newline split the "sentence" ends up being the entire
+    // block of text, returning a huge unhelpful wall of text as the answer.
+    const chunks = (f.text || '').split(/(?<=[.!?])\s+|\r?\n+/).map(s => s.trim()).filter(Boolean);
+    for (const s of chunks) {
       const sWords = words(s);
       const overlap = qWords.filter(w => sWords.includes(w)).length;
       if (overlap > 0 && (!best || overlap > best.overlap)) {
         best = { overlap, sentence: s, file: f.name };
       }
     }
+  }
+  if (best && best.sentence.length > MAX_ANSWER_LENGTH) {
+    best.sentence = best.sentence.slice(0, MAX_ANSWER_LENGTH) + '…';
   }
   return best;
 }
