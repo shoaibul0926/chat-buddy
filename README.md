@@ -2,15 +2,15 @@
 
 **Live: https://chat-buddy-production.up.railway.app**
 
-A chatbot with rule-based chat, an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), and image intelligence (OCR, object detection, captioning, Q&A).
+A chatbot with rule-based chat, an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
 
 ## What changed: real authentication
 
 Chat Buddy started as a single static `index.html` (no backend). It now has a small **Node/Express backend** with:
 
 - **Auth**: register/login with bcrypt-hashed passwords and JWT session tokens.
-- **Per-user database**: each user's chat history, remembered name, and notes are stored server-side (in `data.json`, a simple JSON file — no native database driver required, so it installs anywhere without a C++ build toolchain).
-- The frontend (`public/index.html`) now shows a login/register screen and syncs chat state to `/api/data` instead of using `localStorage`.
+- **Per-user database**: each user's profile, folders, and conversations (each with its own chat history, remembered name, and notes) are stored server-side (in `data.json`, a simple JSON file — no native database driver required, so it installs anywhere without a C++ build toolchain).
+- The frontend (`public/index.html`) now shows a login/register screen and syncs chat state to `/api/conversations/:id` instead of using `localStorage`.
 
 Because of this, **GitHub Pages can no longer host the working app** — Pages only serves static files, and this now needs a running Node process for the API. See "Deploying" below.
 
@@ -41,8 +41,20 @@ data.json       Created automatically on first run (git-ignored)
 |---|---|---|---|
 | `POST /api/register` | — | `{ username, password }` | username 3+ chars, password 6+ chars |
 | `POST /api/login` | — | `{ username, password }` | returns `{ token }` |
-| `GET /api/data` | Bearer token | — | returns `{ history, userName, notes }` |
-| `PUT /api/data` | Bearer token | `{ history, userName, notes }` | overwrites the user's saved state |
+| `GET /api/profile` | Bearer token | — | returns `{ displayName, avatar, theme, username, createdAt }` |
+| `PUT /api/profile` | Bearer token | `{ displayName?, avatar?, theme? }` | updates profile fields |
+| `PUT /api/password` | Bearer token | `{ currentPassword, newPassword }` | changes the account password |
+| `GET /api/folders` | Bearer token | — | lists the user's folders |
+| `POST /api/folders` | Bearer token | `{ name }` | creates a folder |
+| `PATCH /api/folders/:id` | Bearer token | `{ name }` | renames a folder |
+| `DELETE /api/folders/:id` | Bearer token | — | deletes a folder (its chats become unfoldered, not deleted) |
+| `GET /api/conversations` | Bearer token | — | lists the user's conversations (metadata + preview), newest first |
+| `POST /api/conversations` | Bearer token | `{ title? }` | creates a new conversation |
+| `GET /api/conversations/:id` | Bearer token | — | returns a conversation's full `{ history, userName, notes }` |
+| `PUT /api/conversations/:id` | Bearer token | `{ history, userName, notes }` | saves a conversation's chat state |
+| `PATCH /api/conversations/:id` | Bearer token | `{ title?, folderId? }` | renames a conversation or moves it into/out of a folder |
+| `DELETE /api/conversations/:id` | Bearer token | — | deletes a conversation |
+| `GET /api/search?q=` | Bearer token | — | searches message text across all the user's conversations, returns matches with conversation id/title and a snippet |
 | `POST /api/files` | Bearer token | multipart `file` field | uploads a PDF/DOCX/TXT/JPG/PNG/GIF/BMP (10MB max); documents get text extracted, images get OCR + object detection + a generated caption |
 | `GET /api/files` | Bearer token | — | lists the user's uploaded files (metadata only) |
 | `GET /api/files/:id` | Bearer token | — | returns the file's full extracted text |
@@ -65,6 +77,17 @@ data.json       Created automatically on first run (git-ignored)
 - **Preview**: images open in the browser's native image viewer in a new tab, same as PDFs.
 
 Note: `@tensorflow/tfjs-node` (the fast, native-accelerated backend) was tried first but requires a C++ build toolchain unavailable here and not guaranteed on hosting platforms, so this uses the pure-JS `@tensorflow/tfjs` CPU backend instead — slower per-image (a few seconds) but installs and runs anywhere, matching this project's "no native compilation" approach from Phase 1.
+
+## Phase 3: User Experience
+
+- **User profiles**: display name, a chosen emoji avatar, and account creation date — editable from Settings.
+- **Settings**: displayName/avatar/theme editing and password change, all in one modal reachable from the sidebar footer.
+- **Theme switching**: light/dark mode via CSS custom properties, saved per-account (not just per-browser) and applied immediately on login.
+- **Multiple conversations**: chat history is no longer a single blob per user — each user now has any number of named conversations, switchable from a sidebar, matching the "New Chat" pattern of most chat apps.
+- **Conversation folders**: group conversations into folders; deleting a folder un-parents its chats rather than deleting them.
+- **Chat search**: a sidebar search box does a live, debounced search across every message in every one of the user's conversations (not just the open one), showing matching snippets that jump straight to that conversation.
+- **Rename/delete chats**: inline rename (click the pencil, type, Enter/blur to save) and a two-click delete confirmation (no native `confirm()`/`prompt()` dialogs anywhere in the UI) for both conversations and folders.
+- The per-user file library (Phases 1–2) is unchanged by this — files stay attached to the account, not to a single conversation, so you can ask any conversation about any file you've uploaded.
 
 ## Deploying
 

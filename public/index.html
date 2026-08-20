@@ -16,17 +16,62 @@
   }
 
   #app {
+    --bg: #ffffff;
+    --bg-secondary: #f4f4f8;
+    --text: #222222;
+    --text-secondary: #6b6b76;
+    --border: #e0e0e6;
+    --bubble-bot-bg: #e5e5ea;
+    --bubble-bot-text: #000000;
+    --bubble-user-bg: #764ba2;
+    --bubble-user-text: #ffffff;
+    --accent: #764ba2;
+    --accent-hover: #5f3d8a;
+    --sidebar-bg: #f7f5fb;
+    --sidebar-hover: #ece7f5;
+    --sidebar-active: #e2d9f3;
+    --input-bg: #ffffff;
+    --input-border: #cccccc;
+    --overlay-bg: #ffffff;
+
     width: 380px;
     max-width: 100%;
     height: 560px;
     max-height: 90dvh;
-    background: #fff;
+    background: var(--bg);
+    color: var(--text);
     border-radius: 14px;
     box-shadow: 0 12px 30px rgba(0,0,0,0.3);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     overflow: hidden;
     position: relative;
+  }
+
+  #app[data-theme="dark"] {
+    --bg: #1c1c26;
+    --bg-secondary: #15151d;
+    --text: #e8e8ee;
+    --text-secondary: #9a9aab;
+    --border: #34343f;
+    --bubble-bot-bg: #2c2c3a;
+    --bubble-bot-text: #eeeeee;
+    --bubble-user-bg: #8a63c8;
+    --bubble-user-text: #ffffff;
+    --accent: #8a63c8;
+    --accent-hover: #9d7cd4;
+    --sidebar-bg: #16161f;
+    --sidebar-hover: #232330;
+    --sidebar-active: #2c2c40;
+    --input-bg: #22222e;
+    --input-border: #3a3a48;
+    --overlay-bg: #1c1c26;
+  }
+
+  #app.with-sidebar {
+    width: 720px;
+    height: 600px;
+    max-height: 92dvh;
   }
 
   @media (max-width: 480px) {
@@ -37,17 +82,301 @@
       max-height: 100dvh;
       border-radius: 0;
     }
+    #app.with-sidebar {
+      width: 100vw;
+    }
+  }
+
+  @media (max-width: 767px) {
+    #app.with-sidebar {
+      width: 100vw;
+      height: 100dvh;
+      max-height: 100dvh;
+      border-radius: 0;
+    }
+    #app.with-sidebar #sidebar {
+      position: absolute;
+      inset: 0;
+      z-index: 25;
+      width: 100%;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+    }
+    #app.with-sidebar #sidebar.mobile-open {
+      transform: translateX(0);
+    }
+  }
+
+  /* ---------- Sidebar ---------- */
+
+  #sidebar {
+    display: none;
+    flex-direction: column;
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+  }
+
+  #app.with-sidebar #sidebar {
+    display: flex;
+  }
+
+  #sidebarHeader {
+    padding: 14px 12px 8px;
+    flex-shrink: 0;
+  }
+
+  #sidebarBrand {
+    font-weight: bold;
+    font-size: 15px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  #newChatBtn {
+    width: 100%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+
+  #newChatBtn:hover { background: var(--accent-hover); }
+
+  #sidebarSearch {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text);
+    border-radius: 8px;
+    font-size: 12px;
+    outline: none;
+  }
+
+  #searchResults {
+    padding: 0 12px;
+    max-height: 160px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    display: none;
+  }
+
+  #searchResults.visible { display: block; }
+
+  .search-result {
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    margin-bottom: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+
+  .search-result:hover { background: var(--sidebar-hover); }
+  .search-result .sr-title { font-weight: bold; color: var(--accent); display: block; }
+  .search-result .sr-snippet { color: var(--text-secondary); }
+
+  #sidebarList {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 8px;
+  }
+
+  .folder-group { margin-bottom: 6px; }
+
+  .folder-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 6px;
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 6px;
+  }
+
+  .folder-header:hover { background: var(--sidebar-hover); }
+
+  .folder-header .folder-actions { margin-left: auto; display: flex; gap: 2px; }
+  .folder-header button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0.7;
+    padding: 2px 4px;
+  }
+  .folder-header button:hover { opacity: 1; }
+
+  .folder-children { padding-left: 10px; }
+
+  .conv-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    font-size: 12px;
+  }
+
+  .conv-item:hover { background: var(--sidebar-hover); }
+  .conv-item.active { background: var(--sidebar-active); }
+
+  .conv-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .conv-title-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text);
+  }
+
+  .conv-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+    opacity: 0.55;
+  }
+
+  .conv-item:hover .conv-actions,
+  .conv-item:focus-within .conv-actions {
+    opacity: 1;
+  }
+
+  .conv-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 3px;
+    border-radius: 4px;
+  }
+
+  .conv-actions button:hover { background: rgba(0,0,0,0.1); }
+
+  .conv-actions .delete-confirm {
+    background: #e0405a;
+    color: white;
+  }
+
+  #newFolderRow {
+    padding: 4px 6px;
+  }
+
+  #newFolderBtn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 6px;
+  }
+  #newFolderBtn:hover { color: var(--accent); }
+
+  #newFolderInput {
+    width: 100%;
+    font-size: 11px;
+    padding: 5px 8px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    outline: none;
+  }
+
+  #sidebarFooter {
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  #sidebarFooter:hover { background: var(--sidebar-hover); }
+
+  #profileAvatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
+  #profileName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  /* ---------- Chat pane ---------- */
+
+  #chatPane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   header {
-    background: #764ba2;
+    background: var(--accent);
     color: white;
     padding: 14px 62px;
     text-align: center;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: bold;
     position: relative;
     flex-shrink: 0;
+  }
+
+  #sidebarToggleBtn {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    font-size: 14px;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    #app.with-sidebar #sidebarToggleBtn { display: block; }
   }
 
   #clearBtn {
@@ -68,12 +397,19 @@
     background: rgba(255,255,255,0.35);
   }
 
+  #chatTitle {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   #messages {
     flex: 1;
     min-height: 0;
     padding: 12px;
     overflow-y: auto;
-    background: #f4f4f8;
+    background: var(--bg-secondary);
   }
 
   .msg {
@@ -115,15 +451,15 @@
   }
 
   .bot {
-    background: #e5e5ea;
-    color: #000;
+    background: var(--bubble-bot-bg);
+    color: var(--bubble-bot-text);
     border-bottom-left-radius: 4px;
     margin-right: auto;
   }
 
   .user {
-    background: #764ba2;
-    color: #fff;
+    background: var(--bubble-user-bg);
+    color: var(--bubble-user-text);
     border-bottom-right-radius: 4px;
     margin-left: auto;
   }
@@ -131,7 +467,7 @@
   #inputArea {
     display: flex;
     flex-direction: column;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid var(--border);
     padding: 8px 10px 10px;
     gap: 8px;
     flex-shrink: 0;
@@ -157,14 +493,16 @@
     flex: 1;
     min-width: 0;
     padding: 10px 12px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text);
     border-radius: 20px;
     font-size: 16px;
     outline: none;
   }
 
   #sendBtn {
-    background: #764ba2;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 20px;
@@ -175,67 +513,12 @@
   }
 
   #sendBtn:hover {
-    background: #5f3d8a;
+    background: var(--accent-hover);
   }
 
-  #attachBtn {
-    background: #e5e5ea;
-    border: none;
-    border-radius: 50%;
-    width: 38px;
-    height: 38px;
-    font-size: 16px;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  #attachBtn:hover {
-    background: #d6d6db;
-  }
-
-  #videoAttachBtn, #webcamBtn, #docAttachBtn {
-    background: #e5e5ea;
-    border: none;
-    border-radius: 50%;
-    width: 38px;
-    height: 38px;
-    font-size: 16px;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  #videoAttachBtn:hover, #webcamBtn:hover, #docAttachBtn:hover {
-    background: #d6d6db;
-  }
-
-  .preview-btn {
-    margin-top: 6px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 14px;
-    background: #764ba2;
-    color: white;
-    cursor: pointer;
-    font-size: 12px;
-  }
-
-  .preview-btn:hover {
-    background: #5f3d8a;
-  }
-
-  .file-preview-text {
-    white-space: pre-wrap;
-    max-height: 200px;
-    overflow-y: auto;
-    font-size: 12px;
-    margin-top: 6px;
-    background: rgba(0,0,0,0.04);
-    padding: 8px;
-    border-radius: 8px;
-  }
-
-  #micBtn {
-    background: #e5e5ea;
+  #attachBtn, #videoAttachBtn, #webcamBtn, #docAttachBtn, #micBtn {
+    background: var(--bubble-bot-bg);
+    color: var(--text);
     border: none;
     border-radius: 50%;
     width: 38px;
@@ -246,8 +529,34 @@
     transition: background 0.2s;
   }
 
-  #micBtn:hover {
-    background: #d6d6db;
+  #attachBtn:hover, #videoAttachBtn:hover, #webcamBtn:hover, #docAttachBtn:hover, #micBtn:hover {
+    filter: brightness(0.92);
+  }
+
+  .preview-btn {
+    margin-top: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 14px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .preview-btn:hover {
+    background: var(--accent-hover);
+  }
+
+  .file-preview-text {
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 12px;
+    margin-top: 6px;
+    background: rgba(128,128,128,0.15);
+    padding: 8px;
+    border-radius: 8px;
   }
 
   #micBtn.listening {
@@ -301,12 +610,12 @@
   }
 
   #captureBtn {
-    background: #764ba2;
+    background: var(--accent);
     color: white;
   }
 
   #captureBtn:hover {
-    background: #5f3d8a;
+    background: var(--accent-hover);
   }
 
   #cancelWebcamBtn {
@@ -325,11 +634,11 @@
     border-radius: 3px;
     vertical-align: middle;
     margin-right: 6px;
-    border: 1px solid rgba(0,0,0,0.15);
+    border: 1px solid rgba(128,128,128,0.4);
   }
 
   .subtitle {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: normal;
     opacity: 0.8;
     margin-top: 2px;
@@ -343,33 +652,22 @@
     border: 1px dashed #c9b6e6;
   }
 
+  #app[data-theme="dark"] .agent-trace {
+    background: #2a2140 !important;
+    color: #cbb3ec !important;
+    border: 1px dashed #4d3a70;
+  }
+
   .agent-trace div {
     margin: 2px 0;
   }
 
-  #logoutBtn {
-    position: absolute;
-    left: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: rgba(255,255,255,0.2);
-    border: none;
-    color: white;
-    font-size: 12px;
-    padding: 6px 10px;
-    border-radius: 12px;
-    cursor: pointer;
-    display: none;
-  }
-
-  #logoutBtn:hover {
-    background: rgba(255,255,255,0.35);
-  }
+  /* ---------- Auth overlay ---------- */
 
   #authOverlay {
     position: absolute;
     inset: 0;
-    background: #fff;
+    background: var(--overlay-bg);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -381,20 +679,22 @@
 
   #authOverlay h2 {
     margin: 0 0 4px;
-    color: #764ba2;
+    color: var(--accent);
   }
 
   #authOverlay input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text);
     border-radius: 8px;
     font-size: 14px;
     outline: none;
   }
 
   #authOverlay input:focus {
-    border-color: #764ba2;
+    border-color: var(--accent);
   }
 
   #authForm {
@@ -405,7 +705,7 @@
   }
 
   #authSubmitBtn {
-    background: #764ba2;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 8px;
@@ -416,7 +716,7 @@
   }
 
   #authSubmitBtn:hover {
-    background: #5f3d8a;
+    background: var(--accent-hover);
   }
 
   #authSubmitBtn:disabled {
@@ -427,7 +727,7 @@
   #authToggle {
     background: none;
     border: none;
-    color: #764ba2;
+    color: var(--accent);
     font-size: 13px;
     cursor: pointer;
     text-decoration: underline;
@@ -439,43 +739,243 @@
     min-height: 16px;
     text-align: center;
   }
+
+  /* ---------- Settings overlay ---------- */
+
+  #settingsOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    padding: 16px;
+  }
+
+  #settingsOverlay.open { display: flex; }
+
+  #settingsCard {
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 320px;
+    max-height: 90%;
+    overflow-y: auto;
+    padding: 18px;
+  }
+
+  #settingsCard h3 {
+    margin: 0 0 12px;
+    color: var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  #closeSettingsBtn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+
+  .settings-section {
+    margin-bottom: 16px;
+  }
+
+  .settings-label {
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+
+  .settings-section input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text);
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 6px;
+  }
+
+  .avatar-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .avatar-option {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: var(--bg-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .avatar-option.selected {
+    border-color: var(--accent);
+  }
+
+  .theme-toggle {
+    display: flex;
+    gap: 8px;
+  }
+
+  .theme-btn {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid var(--input-border);
+    background: var(--bg-secondary);
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .theme-btn.selected {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .settings-btn {
+    width: 100%;
+    padding: 9px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
+  .settings-btn:hover { background: var(--accent-hover); }
+
+  .settings-btn.secondary {
+    background: var(--bg-secondary);
+    color: var(--text);
+  }
+
+  .settings-btn.danger {
+    background: #e0405a;
+  }
+
+  .settings-msg {
+    font-size: 12px;
+    min-height: 14px;
+    margin-top: 4px;
+  }
+
+  .settings-msg.error { color: #c0392b; }
+  .settings-msg.ok { color: #2a9d5c; }
 </style>
 
 <div id="app">
-  <header>
-    <button id="logoutBtn">Logout</button>
-    🤖 Chat Buddy
-    <div class="subtitle">🧠 AI Agent Mode: multi-step tasks &amp; memory</div>
-    <button id="clearBtn">Clear</button>
-  </header>
-
-  <div id="authOverlay">
-    <h2>🤖 Chat Buddy</h2>
-    <p style="margin:0; color:#666; font-size:13px;">Sign in to save your chats to your account</p>
-    <form id="authForm">
-      <input id="authUsername" type="text" placeholder="Username" autocomplete="username" required />
-      <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" required />
-      <div id="authError"></div>
-      <button id="authSubmitBtn" type="submit">Login</button>
-    </form>
-    <button id="authToggle">Need an account? Register</button>
+  <div id="sidebar">
+    <div id="sidebarHeader">
+      <div id="sidebarBrand">🤖 Chat Buddy</div>
+      <button id="newChatBtn">+ New Chat</button>
+      <input id="sidebarSearch" type="text" placeholder="Search all chats..." autocomplete="off" />
+    </div>
+    <div id="searchResults"></div>
+    <div id="sidebarList"></div>
+    <div id="newFolderRow">
+      <button id="newFolderBtn">+ New Folder</button>
+    </div>
+    <div id="sidebarFooter">
+      <div id="profileAvatar">🤖</div>
+      <div id="profileName">Account</div>
+      <span style="font-size:12px; color:var(--text-secondary);">⚙️</span>
+    </div>
   </div>
 
-  <div id="messages"></div>
-  <div id="inputArea">
-    <div id="toolRow">
-      <button id="attachBtn" title="Upload an image">📎</button>
-      <input id="fileInput" type="file" accept="image/*" hidden />
-      <button id="videoAttachBtn" title="Upload a video">🎥</button>
-      <input id="videoFileInput" type="file" accept="video/*" hidden />
-      <button id="webcamBtn" title="Take a photo with your webcam">📷</button>
-      <button id="docAttachBtn" title="Upload a PDF, DOCX, or TXT file">📄</button>
-      <input id="docFileInput" type="file" accept=".pdf,.docx,.txt" hidden />
-      <button id="micBtn" title="Ask by voice">🎤</button>
+  <div id="chatPane">
+    <header>
+      <button id="sidebarToggleBtn">☰</button>
+      <span id="chatTitle">🤖 Chat Buddy</span>
+      <div class="subtitle">🧠 AI Agent Mode: multi-step tasks &amp; memory</div>
+      <button id="clearBtn">Clear</button>
+    </header>
+
+    <div id="authOverlay">
+      <h2>🤖 Chat Buddy</h2>
+      <p style="margin:0; color:var(--text-secondary); font-size:13px;">Sign in to save your chats to your account</p>
+      <form id="authForm">
+        <input id="authUsername" type="text" placeholder="Username" autocomplete="username" required />
+        <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+        <div id="authError"></div>
+        <button id="authSubmitBtn" type="submit">Login</button>
+      </form>
+      <button id="authToggle">Need an account? Register</button>
     </div>
-    <div id="textRow">
-      <input id="userInput" type="text" placeholder="Type or paste a screenshot (Ctrl+V)..." autocomplete="off" />
-      <button id="sendBtn">Send</button>
+
+    <div id="settingsOverlay">
+      <div id="settingsCard">
+        <h3>Settings <button id="closeSettingsBtn">✕</button></h3>
+
+        <div class="settings-section">
+          <div class="settings-label">Display name</div>
+          <input id="settingsDisplayName" type="text" placeholder="Display name" />
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-label">Avatar</div>
+          <div class="avatar-grid" id="avatarGrid"></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-label">Theme</div>
+          <div class="theme-toggle">
+            <button class="theme-btn" id="themeLightBtn" type="button">☀️ Light</button>
+            <button class="theme-btn" id="themeDarkBtn" type="button">🌙 Dark</button>
+          </div>
+        </div>
+
+        <button class="settings-btn" id="saveProfileBtn">Save profile</button>
+        <div class="settings-msg" id="profileMsg"></div>
+
+        <div class="settings-section" style="margin-top:16px;">
+          <div class="settings-label">Change password</div>
+          <input id="currentPasswordInput" type="password" placeholder="Current password" />
+          <input id="newPasswordInput" type="password" placeholder="New password (6+ chars)" />
+        </div>
+        <button class="settings-btn secondary" id="changePasswordBtn">Change password</button>
+        <div class="settings-msg" id="passwordMsg"></div>
+
+        <button class="settings-btn danger" id="settingsLogoutBtn" style="margin-top:16px;">Logout</button>
+      </div>
+    </div>
+
+    <div id="messages"></div>
+    <div id="inputArea">
+      <div id="toolRow">
+        <button id="attachBtn" title="Upload an image">📎</button>
+        <input id="fileInput" type="file" accept="image/*" hidden />
+        <button id="videoAttachBtn" title="Upload a video">🎥</button>
+        <input id="videoFileInput" type="file" accept="video/*" hidden />
+        <button id="webcamBtn" title="Take a photo with your webcam">📷</button>
+        <button id="docAttachBtn" title="Upload a PDF, DOCX, or TXT file">📄</button>
+        <input id="docFileInput" type="file" accept=".pdf,.docx,.txt" hidden />
+        <button id="micBtn" title="Ask by voice">🎤</button>
+      </div>
+      <div id="textRow">
+        <input id="userInput" type="text" placeholder="Type or paste a screenshot (Ctrl+V)..." autocomplete="off" />
+        <button id="sendBtn">Send</button>
+      </div>
     </div>
   </div>
 </div>
@@ -494,6 +994,7 @@
   const docFileInput = document.getElementById('docFileInput');
   const micBtn = document.getElementById('micBtn');
   const appEl = document.getElementById('app');
+  const chatTitleEl = document.getElementById('chatTitle');
 
   let userFiles = [];
 
@@ -502,6 +1003,7 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
   const authOverlay = document.getElementById('authOverlay');
   const authForm = document.getElementById('authForm');
   const authUsername = document.getElementById('authUsername');
@@ -509,7 +1011,6 @@
   const authError = document.getElementById('authError');
   const authSubmitBtn = document.getElementById('authSubmitBtn');
   const authToggle = document.getElementById('authToggle');
-  const logoutBtn = document.getElementById('logoutBtn');
 
   let userName = null;
   let notes = [];
@@ -520,16 +1021,68 @@
   let authToken = localStorage.getItem(TOKEN_KEY) || null;
   let authMode = 'login';
 
+  // ---------- Phase 3 state: profile, folders, conversations ----------
+  const AVATARS = ['🤖', '🦊', '🐼', '🐸', '🐙', '🦉', '🐳', '🦄', '🐝', '🦁'];
+  let profile = { displayName: '', avatar: '🤖', theme: 'light' };
+  let folders = [];
+  let conversations = [];
+  let currentConversationId = null;
+  let collapsedFolders = new Set();
+
+  const sidebar = document.getElementById('sidebar');
+  const sidebarList = document.getElementById('sidebarList');
+  const sidebarSearch = document.getElementById('sidebarSearch');
+  const searchResultsEl = document.getElementById('searchResults');
+  const newChatBtn = document.getElementById('newChatBtn');
+  const newFolderBtn = document.getElementById('newFolderBtn');
+  const newFolderRow = document.getElementById('newFolderRow');
+  const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+  const profileAvatarEl = document.getElementById('profileAvatar');
+  const profileNameEl = document.getElementById('profileName');
+  const sidebarFooter = document.getElementById('sidebarFooter');
+
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const settingsDisplayName = document.getElementById('settingsDisplayName');
+  const avatarGrid = document.getElementById('avatarGrid');
+  const themeLightBtn = document.getElementById('themeLightBtn');
+  const themeDarkBtn = document.getElementById('themeDarkBtn');
+  const saveProfileBtn = document.getElementById('saveProfileBtn');
+  const profileMsg = document.getElementById('profileMsg');
+  const currentPasswordInput = document.getElementById('currentPasswordInput');
+  const newPasswordInput = document.getElementById('newPasswordInput');
+  const changePasswordBtn = document.getElementById('changePasswordBtn');
+  const passwordMsg = document.getElementById('passwordMsg');
+  const settingsLogoutBtn = document.getElementById('settingsLogoutBtn');
+
+  function authHeaders(json) {
+    const h = { Authorization: 'Bearer ' + authToken };
+    if (json) h['Content-Type'] = 'application/json';
+    return h;
+  }
+
   function timestamp() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  function applyTheme() {
+    appEl.setAttribute('data-theme', profile.theme === 'dark' ? 'dark' : 'light');
+  }
+
   function saveHistory() {
-    if (!authToken) return;
-    fetch('/api/data', {
+    if (!authToken || !currentConversationId) return;
+    fetch('/api/conversations/' + currentConversationId, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      headers: authHeaders(true),
       body: JSON.stringify({ history, userName, notes })
+    }).then(() => {
+      const conv = conversations.find(c => c.id === currentConversationId);
+      if (conv) {
+        conv.updatedAt = new Date().toISOString();
+        const last = history[history.length - 1];
+        conv.preview = last ? (last.text || '').slice(0, 60) : '';
+        renderSidebar();
+      }
     }).catch(e => console.warn('Could not save to server', e));
   }
 
@@ -604,12 +1157,12 @@
 
   function showApp() {
     authOverlay.style.display = 'none';
-    logoutBtn.style.display = 'block';
+    appEl.classList.add('with-sidebar');
   }
 
   function showAuth(message) {
     authOverlay.style.display = 'flex';
-    logoutBtn.style.display = 'none';
+    appEl.classList.remove('with-sidebar');
     messagesEl.innerHTML = '';
     authError.textContent = message || '';
   }
@@ -636,16 +1189,20 @@
   function logout() {
     authToken = null;
     userFiles = [];
+    conversations = [];
+    folders = [];
+    currentConversationId = null;
     localStorage.removeItem(TOKEN_KEY);
     authUsername.value = '';
     authPassword.value = '';
+    settingsOverlay.classList.remove('open');
     setAuthMode('login');
     showAuth();
   }
 
   async function loadUserFiles() {
     try {
-      const res = await fetch('/api/files', { headers: { Authorization: 'Bearer ' + authToken } });
+      const res = await fetch('/api/files', { headers: authHeaders() });
       if (!res.ok) { userFiles = []; return; }
       const data = await res.json();
       userFiles = Array.isArray(data.files) ? data.files : [];
@@ -654,13 +1211,59 @@
     }
   }
 
+  async function loadProfile() {
+    const res = await fetch('/api/profile', { headers: authHeaders() });
+    if (!res.ok) throw new Error('unauthorized');
+    profile = await res.json();
+    applyTheme();
+    profileAvatarEl.textContent = profile.avatar || '🤖';
+    profileNameEl.textContent = profile.displayName || profile.username;
+  }
+
+  async function loadFolders() {
+    const res = await fetch('/api/folders', { headers: authHeaders() });
+    const data = await res.json();
+    folders = data.folders || [];
+  }
+
+  async function loadConversationsList() {
+    const res = await fetch('/api/conversations', { headers: authHeaders() });
+    const data = await res.json();
+    conversations = data.conversations || [];
+  }
+
+  async function openConversation(id) {
+    const res = await fetch('/api/conversations/' + id, { headers: authHeaders() });
+    if (!res.ok) return false;
+    const data = await res.json();
+    currentConversationId = id;
+    hydrateFromData(data.conversation);
+    chatTitleEl.textContent = data.conversation.title;
+    renderSidebar();
+    if (window.innerWidth < 768) sidebar.classList.remove('mobile-open');
+    return true;
+  }
+
+  async function createNewConversation() {
+    const res = await fetch('/api/conversations', {
+      method: 'POST', headers: authHeaders(true), body: JSON.stringify({ title: 'New Chat' })
+    });
+    const data = await res.json();
+    conversations.unshift({ id: data.conversation.id, title: data.conversation.title, folderId: null, createdAt: data.conversation.createdAt, updatedAt: data.conversation.updatedAt, preview: '' });
+    await openConversation(data.conversation.id);
+  }
+
   async function loadFromServer() {
     try {
-      const res = await fetch('/api/data', { headers: { Authorization: 'Bearer ' + authToken } });
-      if (!res.ok) throw new Error('unauthorized');
-      const data = await res.json();
-      hydrateFromData(data);
+      await loadProfile();
+      await loadFolders();
+      await loadConversationsList();
       await loadUserFiles();
+      if (conversations.length === 0) {
+        await createNewConversation();
+      } else {
+        await openConversation(conversations[0].id);
+      }
       showApp();
     } catch (e) {
       logout();
@@ -693,6 +1296,365 @@
     }
   }
 
+  // ---------- Sidebar rendering ----------
+
+  function renderSidebar() {
+    sidebarList.innerHTML = '';
+
+    const byFolder = {};
+    const unfoldered = [];
+    conversations.forEach(c => {
+      if (c.folderId) {
+        (byFolder[c.folderId] = byFolder[c.folderId] || []).push(c);
+      } else {
+        unfoldered.push(c);
+      }
+    });
+
+    folders.forEach(folder => {
+      const group = document.createElement('div');
+      group.className = 'folder-group';
+
+      const header = document.createElement('div');
+      header.className = 'folder-header';
+      const collapsed = collapsedFolders.has(folder.id);
+
+      const toggleSpan = document.createElement('span');
+      toggleSpan.textContent = `${collapsed ? '▶' : '▼'} 📁 `;
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = folder.name;
+      toggleSpan.appendChild(nameSpan);
+      toggleSpan.addEventListener('click', () => {
+        if (collapsedFolders.has(folder.id)) collapsedFolders.delete(folder.id);
+        else collapsedFolders.add(folder.id);
+        renderSidebar();
+      });
+      header.appendChild(toggleSpan);
+
+      const actions = document.createElement('span');
+      actions.className = 'folder-actions';
+
+      const renameBtn = document.createElement('button');
+      renameBtn.textContent = '✏️';
+      renameBtn.title = 'Rename';
+      renameBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.className = 'conv-title-input';
+        input.value = folder.name;
+        header.replaceChild(input, toggleSpan);
+        input.focus();
+        input.select();
+        let committed = false;
+        function commit() {
+          if (committed) return;
+          committed = true;
+          const newName = input.value.trim() || folder.name;
+          folder.name = newName;
+          fetch('/api/folders/' + folder.id, { method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ name: newName }) });
+          renderSidebar();
+        }
+        input.addEventListener('keydown', ev => {
+          if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+          if (ev.key === 'Escape') { committed = true; renderSidebar(); }
+        });
+        input.addEventListener('blur', commit);
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '🗑️';
+      deleteBtn.title = 'Delete folder (chats move to unfoldered)';
+      let confirmingFolderDelete = false;
+      deleteBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!confirmingFolderDelete) {
+          confirmingFolderDelete = true;
+          deleteBtn.textContent = '✓';
+          deleteBtn.classList.add('delete-confirm');
+          setTimeout(() => {
+            if (confirmingFolderDelete) {
+              confirmingFolderDelete = false;
+              deleteBtn.textContent = '🗑️';
+              deleteBtn.classList.remove('delete-confirm');
+            }
+          }, 3000);
+          return;
+        }
+        fetch('/api/folders/' + folder.id, { method: 'DELETE', headers: authHeaders() }).then(() => {
+          folders = folders.filter(f => f.id !== folder.id);
+          conversations.forEach(c => { if (c.folderId === folder.id) c.folderId = null; });
+          renderSidebar();
+        });
+      });
+
+      actions.appendChild(renameBtn);
+      actions.appendChild(deleteBtn);
+      header.appendChild(actions);
+      group.appendChild(header);
+
+      if (!collapsed) {
+        const children = document.createElement('div');
+        children.className = 'folder-children';
+        (byFolder[folder.id] || []).forEach(c => children.appendChild(renderConvItem(c)));
+        group.appendChild(children);
+      }
+
+      sidebarList.appendChild(group);
+    });
+
+    unfoldered.forEach(c => sidebarList.appendChild(renderConvItem(c)));
+  }
+
+  function renderConvItem(c) {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (c.id === currentConversationId ? ' active' : '');
+
+    const title = document.createElement('span');
+    title.className = 'conv-title';
+    title.textContent = c.title;
+    title.addEventListener('click', () => openConversation(c.id));
+    item.appendChild(title);
+
+    const actions = document.createElement('div');
+    actions.className = 'conv-actions';
+
+    const renameBtn = document.createElement('button');
+    renameBtn.textContent = '✏️';
+    renameBtn.title = 'Rename';
+    renameBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      startInlineRename(item, title, c);
+    });
+
+    const folderSelect = document.createElement('select');
+    folderSelect.style.cssText = 'font-size:10px; max-width:50px; border-radius:4px;';
+    folderSelect.innerHTML = '<option value="">No folder</option>' +
+      folders.map(f => `<option value="${f.id}" ${f.id === c.folderId ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('');
+    folderSelect.addEventListener('click', e => e.stopPropagation());
+    folderSelect.addEventListener('change', () => {
+      const folderId = folderSelect.value || null;
+      fetch('/api/conversations/' + c.id, { method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ folderId }) })
+        .then(() => { c.folderId = folderId; renderSidebar(); });
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '🗑️';
+    deleteBtn.title = 'Delete';
+    let confirmingDelete = false;
+    deleteBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!confirmingDelete) {
+        confirmingDelete = true;
+        deleteBtn.textContent = '✓';
+        deleteBtn.classList.add('delete-confirm');
+        setTimeout(() => {
+          if (confirmingDelete) {
+            confirmingDelete = false;
+            deleteBtn.textContent = '🗑️';
+            deleteBtn.classList.remove('delete-confirm');
+          }
+        }, 3000);
+        return;
+      }
+      fetch('/api/conversations/' + c.id, { method: 'DELETE', headers: authHeaders() }).then(async () => {
+        conversations = conversations.filter(x => x.id !== c.id);
+        if (c.id === currentConversationId) {
+          if (conversations.length > 0) await openConversation(conversations[0].id);
+          else await createNewConversation();
+        } else {
+          renderSidebar();
+        }
+      });
+    });
+
+    actions.appendChild(renameBtn);
+    actions.appendChild(folderSelect);
+    actions.appendChild(deleteBtn);
+    item.appendChild(actions);
+
+    return item;
+  }
+
+  function startInlineRename(item, titleEl, c) {
+    const input = document.createElement('input');
+    input.className = 'conv-title-input';
+    input.value = c.title;
+    item.replaceChild(input, titleEl);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    function commit() {
+      if (committed) return;
+      committed = true;
+      const newTitle = input.value.trim() || c.title;
+      c.title = newTitle;
+      if (c.id === currentConversationId) chatTitleEl.textContent = newTitle;
+      fetch('/api/conversations/' + c.id, { method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ title: newTitle }) });
+      renderSidebar();
+    }
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { committed = true; renderSidebar(); }
+    });
+    input.addEventListener('blur', commit);
+  }
+
+  let searchDebounce = null;
+  sidebarSearch.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    const q = sidebarSearch.value.trim();
+    if (!q) { searchResultsEl.classList.remove('visible'); searchResultsEl.innerHTML = ''; return; }
+    searchDebounce = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/search?q=' + encodeURIComponent(q), { headers: authHeaders() });
+        const data = await res.json();
+        renderSearchResults(data.results || []);
+      } catch (e) {}
+    }, 300);
+  });
+
+  function renderSearchResults(results) {
+    searchResultsEl.innerHTML = '';
+    if (!results.length) {
+      searchResultsEl.innerHTML = '<div style="font-size:11px; color:var(--text-secondary); padding:6px;">No matches</div>';
+    } else {
+      results.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'search-result';
+        div.innerHTML = `<span class="sr-title">${escapeHtml(r.conversationTitle)}</span><span class="sr-snippet">${escapeHtml(r.snippet)}</span>`;
+        div.addEventListener('click', () => {
+          openConversation(r.conversationId);
+          sidebarSearch.value = '';
+          searchResultsEl.classList.remove('visible');
+        });
+        searchResultsEl.appendChild(div);
+      });
+    }
+    searchResultsEl.classList.add('visible');
+  }
+
+  newChatBtn.addEventListener('click', createNewConversation);
+
+  newFolderBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.id = 'newFolderInput';
+    input.placeholder = 'Folder name';
+    newFolderRow.innerHTML = '';
+    newFolderRow.appendChild(input);
+    input.focus();
+    let committed = false;
+    function commit() {
+      if (committed) return;
+      committed = true;
+      const name = input.value.trim();
+      if (name) {
+        fetch('/api/folders', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ name }) })
+          .then(r => r.json()).then(data => { folders.push(data.folder); resetNewFolderRow(); renderSidebar(); });
+      } else {
+        resetNewFolderRow();
+      }
+    }
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { committed = true; resetNewFolderRow(); }
+    });
+    input.addEventListener('blur', commit);
+  });
+
+  function resetNewFolderRow() {
+    newFolderRow.innerHTML = '<button id="newFolderBtn">+ New Folder</button>';
+    document.getElementById('newFolderBtn').addEventListener('click', () => newFolderBtn.click());
+  }
+
+  sidebarToggleBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('mobile-open');
+  });
+
+  // ---------- Settings ----------
+
+  AVATARS.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'avatar-option';
+    btn.textContent = a;
+    btn.type = 'button';
+    btn.addEventListener('click', () => {
+      avatarGrid.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+      btn.classList.add('selected');
+    });
+    avatarGrid.appendChild(btn);
+  });
+
+  function openSettings() {
+    settingsDisplayName.value = profile.displayName || '';
+    avatarGrid.querySelectorAll('.avatar-option').forEach(el => {
+      el.classList.toggle('selected', el.textContent === profile.avatar);
+    });
+    themeLightBtn.classList.toggle('selected', profile.theme !== 'dark');
+    themeDarkBtn.classList.toggle('selected', profile.theme === 'dark');
+    profileMsg.textContent = '';
+    passwordMsg.textContent = '';
+    currentPasswordInput.value = '';
+    newPasswordInput.value = '';
+    settingsOverlay.classList.add('open');
+  }
+
+  sidebarFooter.addEventListener('click', openSettings);
+  closeSettingsBtn.addEventListener('click', () => settingsOverlay.classList.remove('open'));
+
+  themeLightBtn.addEventListener('click', () => {
+    themeLightBtn.classList.add('selected');
+    themeDarkBtn.classList.remove('selected');
+  });
+  themeDarkBtn.addEventListener('click', () => {
+    themeDarkBtn.classList.add('selected');
+    themeLightBtn.classList.remove('selected');
+  });
+
+  saveProfileBtn.addEventListener('click', async () => {
+    const selectedAvatar = avatarGrid.querySelector('.avatar-option.selected');
+    const theme = themeDarkBtn.classList.contains('selected') ? 'dark' : 'light';
+    const patch = {
+      displayName: settingsDisplayName.value.trim() || profile.displayName,
+      avatar: selectedAvatar ? selectedAvatar.textContent : profile.avatar,
+      theme
+    };
+    try {
+      const res = await fetch('/api/profile', { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(patch) });
+      const data = await res.json();
+      if (!res.ok) { profileMsg.textContent = data.error || 'Could not save.'; profileMsg.className = 'settings-msg error'; return; }
+      profile = { ...profile, ...data };
+      applyTheme();
+      profileAvatarEl.textContent = profile.avatar;
+      profileNameEl.textContent = profile.displayName;
+      profileMsg.textContent = 'Saved!';
+      profileMsg.className = 'settings-msg ok';
+    } catch (e) {
+      profileMsg.textContent = "Couldn't reach the server.";
+      profileMsg.className = 'settings-msg error';
+    }
+  });
+
+  changePasswordBtn.addEventListener('click', async () => {
+    const currentPassword = currentPasswordInput.value;
+    const newPassword = newPasswordInput.value;
+    try {
+      const res = await fetch('/api/password', { method: 'PUT', headers: authHeaders(true), body: JSON.stringify({ currentPassword, newPassword }) });
+      const data = await res.json();
+      if (!res.ok) { passwordMsg.textContent = data.error || 'Could not change password.'; passwordMsg.className = 'settings-msg error'; return; }
+      passwordMsg.textContent = 'Password changed!';
+      passwordMsg.className = 'settings-msg ok';
+      currentPasswordInput.value = '';
+      newPasswordInput.value = '';
+    } catch (e) {
+      passwordMsg.textContent = "Couldn't reach the server.";
+      passwordMsg.className = 'settings-msg error';
+    }
+  });
+
+  settingsLogoutBtn.addEventListener('click', logout);
+
   function showTyping() {
     const div = document.createElement('div');
     div.className = 'msg bot typing-wrap';
@@ -712,7 +1674,7 @@
     { patterns: ['weather'], replies: ["I can't check the weather, but I hope it's sunny where you are!"] },
     { patterns: ['time'], replies: [() => `It's currently ${new Date().toLocaleTimeString()}.`] },
     { patterns: ['date', 'today'], replies: [() => `Today's date is ${new Date().toLocaleDateString()}.`] },
-    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), handle multi-step requests, and read PDF/DOCX/TXT/images you upload (with OCR and object detection for images) — just ask me a question afterward!'] }
+    { patterns: ['help'], replies: ['I can chat, do math, tell you the time/date, remember things ("remember that ..."), handle multi-step requests, and read PDF/DOCX/TXT/images you upload (with OCR and object detection for images) — just ask me a question afterward! You can also organize chats into folders, search across all of them, and customize your profile/theme from Settings.'] }
   ];
 
   const fallbacks = [
@@ -936,8 +1898,6 @@
     if (!meta || !authToken) return;
     try {
       if (meta.type === 'pdf' || IMAGE_TYPES.includes(meta.type)) {
-        // Open the tab synchronously (within the click's user-gesture context) so
-        // browsers don't treat it as a popup once we navigate it after the awaits below.
         const newTab = window.open('', '_blank');
         const res = await fetch('/api/files/' + fileId + '/download', {
           headers: { Authorization: 'Bearer ' + authToken }
@@ -1283,7 +2243,6 @@
     addMessage("Chat cleared! I'm Chat Buddy again. What's your name?", 'bot');
   });
 
-  logoutBtn.addEventListener('click', logout);
   authForm.addEventListener('submit', handleAuthSubmit);
   authToggle.addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
 

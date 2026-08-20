@@ -307,16 +307,133 @@ app.post('/api/login', (req, res) => {
   res.json({ token: makeToken(user), username: user.username });
 });
 
-app.get('/api/data', requireAuth, (req, res) => {
+app.get('/api/profile', requireAuth, (req, res) => {
+  const profile = db.getProfile(req.user.id);
+  if (!profile) return res.status(404).json({ error: 'User not found' });
   const user = db.findUserById(req.user.id);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json(user.data);
+  res.json({ ...profile, username: user.username, createdAt: user.createdAt });
 });
 
-app.put('/api/data', requireAuth, (req, res) => {
-  const ok = db.saveUserData(req.user.id, req.body || {});
-  if (!ok) return res.status(404).json({ error: 'User not found' });
+app.put('/api/profile', requireAuth, (req, res) => {
+  const { displayName, avatar, theme } = req.body || {};
+  const patch = {};
+  if (typeof displayName === 'string' && displayName.trim()) patch.displayName = displayName.trim().slice(0, 40);
+  if (typeof avatar === 'string') patch.avatar = avatar.slice(0, 8);
+  if (theme === 'light' || theme === 'dark') patch.theme = theme;
+  const profile = db.updateProfile(req.user.id, patch);
+  if (!profile) return res.status(404).json({ error: 'User not found' });
+  res.json(profile);
+});
+
+app.put('/api/password', requireAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  const user = db.findUserById(req.user.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!bcrypt.compareSync(currentPassword || '', user.passwordHash)) {
+    return res.status(401).json({ error: 'Current password is incorrect.' });
+  }
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be 6+ characters.' });
+  }
+  db.updatePassword(user.id, bcrypt.hashSync(newPassword, 10));
   res.json({ ok: true });
+});
+
+app.get('/api/folders', requireAuth, (req, res) => {
+  res.json({ folders: db.listFolders(req.user.id) });
+});
+
+app.post('/api/folders', requireAuth, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Folder name is required.' });
+  const folder = db.createFolder(req.user.id, name.trim().slice(0, 40));
+  res.json({ folder });
+});
+
+app.patch('/api/folders/:id', requireAuth, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Folder name is required.' });
+  const ok = db.renameFolder(req.user.id, req.params.id, name.trim().slice(0, 40));
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/folders/:id', requireAuth, (req, res) => {
+  db.deleteFolder(req.user.id, req.params.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/conversations', requireAuth, (req, res) => {
+  const conversations = db.listConversations(req.user.id).map(c => {
+    const lastEntry = c.history[c.history.length - 1];
+    return {
+      id: c.id,
+      title: c.title,
+      folderId: c.folderId,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      preview: lastEntry ? (lastEntry.text || '').slice(0, 60) : ''
+    };
+  }).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  res.json({ conversations });
+});
+
+app.post('/api/conversations', requireAuth, (req, res) => {
+  const { title } = req.body || {};
+  const conversation = db.createConversation(req.user.id, title);
+  if (!conversation) return res.status(404).json({ error: 'User not found' });
+  res.json({ conversation });
+});
+
+app.get('/api/conversations/:id', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.user.id, req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Not found' });
+  res.json({ conversation });
+});
+
+app.put('/api/conversations/:id', requireAuth, (req, res) => {
+  const { history, userName, notes } = req.body || {};
+  const ok = db.saveConversation(req.user.id, req.params.id, { history, userName, notes });
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+app.patch('/api/conversations/:id', requireAuth, (req, res) => {
+  const { title, folderId } = req.body || {};
+  const patch = {};
+  if (typeof title === 'string' && title.trim()) patch.title = title.trim().slice(0, 60);
+  if (folderId === null || typeof folderId === 'string') patch.folderId = folderId;
+  const ok = db.saveConversation(req.user.id, req.params.id, patch);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/conversations/:id', requireAuth, (req, res) => {
+  const ok = db.deleteConversation(req.user.id, req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+function stripHtml(html) {
+  return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+app.get('/api/search', requireAuth, (req, res) => {
+  const q = (req.query.q || '').toString().trim().toLowerCase();
+  if (!q) return res.json({ results: [] });
+  const results = [];
+  for (const c of db.listConversations(req.user.id)) {
+    for (const entry of c.history) {
+      const plain = entry.type === 'html' ? stripHtml(entry.html) : (entry.text || '');
+      const idx = plain.toLowerCase().indexOf(q);
+      if (idx !== -1) {
+        const start = Math.max(0, idx - 30);
+        const snippet = (start > 0 ? '…' : '') + plain.slice(start, idx + q.length + 30) + (idx + q.length + 30 < plain.length ? '…' : '');
+        results.push({ conversationId: c.id, conversationTitle: c.title, sender: entry.sender, time: entry.time, snippet });
+      }
+    }
+  }
+  res.json({ results: results.slice(0, 50) });
 });
 
 app.listen(PORT, () => {
