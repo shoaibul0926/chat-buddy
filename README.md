@@ -1,6 +1,8 @@
 # Chat Buddy
 
-A chatbot with rule-based chat, an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, and now real user accounts with server-side persistence.
+**Live: https://chat-buddy-production.up.railway.app**
+
+A chatbot with rule-based chat, an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, and document upload/preview/Q&A (PDF/DOCX/TXT).
 
 ## What changed: real authentication
 
@@ -55,12 +57,14 @@ data.json       Created automatically on first run (git-ignored)
 
 ## Deploying
 
-GitHub Pages won't work anymore (no backend). To deploy for real, push this repo to a host that runs Node, e.g. [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io):
+Currently deployed on **Railway** at https://chat-buddy-production.up.railway.app (project: `chat-buddy`, service auto-deploys from this repo via `railway up`; `JWT_SECRET` is set as an environment variable there).
+
+GitHub Pages won't work for this app (no backend) — the repo page's README is just documentation, not the live app. To redeploy elsewhere, any host that runs Node works, e.g. [Render](https://render.com) or [Fly.io](https://fly.io):
 
 - Build command: `npm install`
 - Start command: `npm start`
 - Set the `JWT_SECRET` environment variable to a long random string.
-- Note: `data.json` lives on local disk, so on most free hosts it resets on redeploy — fine for a demo, not for production data you care about keeping.
+- Note: `data.json` and `uploads/` live on local disk, so on most hosts (including Railway's default filesystem) they reset on redeploy — fine for a demo, not for production data you care about keeping.
 
 ## Known limitations
 
