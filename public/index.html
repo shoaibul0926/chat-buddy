@@ -2257,7 +2257,10 @@
           // falling through to an unrelated generic chatbot reply.
           reply = await getFileOverview();
         } else {
-          ({ steps, reply } = runAgent(text));
+          // generalQuestion with no match above the relevance threshold: say
+          // so explicitly instead of silently falling through to the generic
+          // small-talk bot, which would answer confidently but off-topic.
+          reply = `I couldn't find anything about that in your uploaded document${userFiles.length > 1 ? 's' : ''}. Could you rephrase, or ask about something else in the file?`;
         }
       } else {
         ({ steps, reply } = runAgent(text));

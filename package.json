@@ -4,7 +4,8 @@
   "description": "Chat Buddy: a chatbot with a Node/Express backend for real user accounts, server-side persistence, and document intelligence (PDF/DOCX/TXT).",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",

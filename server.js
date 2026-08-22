@@ -6,13 +6,12 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
-const { PDFParse } = require('pdf-parse');
-const mammoth = require('mammoth');
 const Tesseract = require('tesseract.js');
 const tf = require('@tensorflow/tfjs');
 const cocoSsd = require('@tensorflow-models/coco-ssd');
 const { Jimp } = require('jimp');
 const db = require('./db');
+const { extractText, findAnswer } = require('./docQA');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
@@ -62,18 +61,6 @@ const upload = multer({
     cb(null, ALLOWED_EXTENSIONS.includes(ext));
   }
 });
-
-async function extractText(filePath, ext) {
-  if (ext === '.txt') return fs.readFileSync(filePath, 'utf8');
-  if (ext === '.pdf') {
-    const parser = new PDFParse({ data: fs.readFileSync(filePath) });
-    const result = await parser.getText();
-    await parser.destroy();
-    return result.text;
-  }
-  if (ext === '.docx') return (await mammoth.extractRawText({ path: filePath })).value;
-  return '';
-}
 
 let cocoModelPromise = null;
 function getCocoModel() {
@@ -179,43 +166,6 @@ async function analyzeImageFile(filePath) {
     ocrText, objects: predictions.map(p => ({ class: p.class, score: p.score })),
     caption, searchableText
   };
-}
-
-const STOPWORDS = new Set([
-  'the', 'is', 'a', 'an', 'of', 'to', 'and', 'in', 'on', 'for', 'what', 'does',
-  'do', 'say', 'about', 'tell', 'me', 'file', 'document', 'that', 'this', 'it',
-  'was', 'were', 'are', 'be', 'with', 'as', 'at', 'from', 'my', 'your'
-]);
-
-function words(text) {
-  return (text.toLowerCase().match(/[a-z]+|[0-9]+/g) || []).filter(w => !STOPWORDS.has(w));
-}
-
-const MAX_ANSWER_LENGTH = 400;
-
-function findAnswer(files, question) {
-  const qWords = words(question);
-  if (!qWords.length) return null;
-  let best = null;
-  for (const f of files) {
-    // Split on sentence punctuation AND newlines — plain prose (PDFs/DOCX
-    // with real sentences) splits fine on punctuation alone, but slide decks,
-    // bullet lists, and code snippets often have little to no punctuation,
-    // so without the newline split the "sentence" ends up being the entire
-    // block of text, returning a huge unhelpful wall of text as the answer.
-    const chunks = (f.text || '').split(/(?<=[.!?])\s+|\r?\n+/).map(s => s.trim()).filter(Boolean);
-    for (const s of chunks) {
-      const sWords = words(s);
-      const overlap = qWords.filter(w => sWords.includes(w)).length;
-      if (overlap > 0 && (!best || overlap > best.overlap)) {
-        best = { overlap, sentence: s, file: f.name };
-      }
-    }
-  }
-  if (best && best.sentence.length > MAX_ANSWER_LENGTH) {
-    best.sentence = best.sentence.slice(0, MAX_ANSWER_LENGTH) + '…';
-  }
-  return best;
 }
 
 app.post('/api/files', requireAuth, upload.single('file'), async (req, res) => {
