@@ -11,7 +11,7 @@ const tf = require('@tensorflow/tfjs');
 const cocoSsd = require('@tensorflow-models/coco-ssd');
 const { Jimp } = require('jimp');
 const db = require('./db');
-const { extractText, findAnswer } = require('./docQA');
+const { extractText, findAnswer, embedChunksForFile, isEmbeddingConfigured } = require('./docQA');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
@@ -195,6 +195,15 @@ app.post('/api/files', requireAuth, upload.single('file'), async (req, res) => {
       };
     } else {
       fileRecord.text = (await extractText(req.file.path, ext)).slice(0, 200000);
+      if (isEmbeddingConfigured()) {
+        try {
+          fileRecord.chunks = await embedChunksForFile(fileRecord.text);
+        } catch (e) {
+          // Q&A still works via keyword search on fileRecord.text — an
+          // embeddings outage shouldn't block the upload itself.
+          console.error('Embedding upload failed, falling back to keyword search for this file:', e.message);
+        }
+      }
     }
 
     db.addFile(req.user.id, fileRecord);
@@ -237,12 +246,12 @@ app.get('/api/files/:id/download', requireAuth, (req, res) => {
   res.sendFile(filePath);
 });
 
-app.post('/api/ask-files', requireAuth, (req, res) => {
+app.post('/api/ask-files', requireAuth, async (req, res) => {
   const { question } = req.body || {};
   if (!question) return res.status(400).json({ error: 'Missing question' });
   const files = db.listFiles(req.user.id);
   if (!files.length) return res.json({ answer: null });
-  const match = findAnswer(files, question);
+  const match = await findAnswer(files, question);
   res.json(match ? { answer: match.sentence, source: match.file } : { answer: null });
 });
 

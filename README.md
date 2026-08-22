@@ -59,13 +59,16 @@ data.json       Created automatically on first run (git-ignored)
 | `GET /api/files` | Bearer token | — | lists the user's uploaded files (metadata only) |
 | `GET /api/files/:id` | Bearer token | — | returns the file's full extracted text |
 | `GET /api/files/:id/download` | Bearer token | — | streams the original file (inline, for preview) |
-| `POST /api/ask-files` | Bearer token | `{ question }` | searches the user's uploaded files for the best-matching sentence |
+| `POST /api/ask-files` | Bearer token | `{ question }` | finds the best-matching passage across the user's uploaded files (semantic match if `VOYAGE_API_KEY` is set, otherwise keyword-overlap search) |
 
 ## Phase 1: Document & File Intelligence
 
 - **Upload**: PDF, DOCX, or TXT via the 📄 button. Files are stored per-user on disk (`uploads/<userId>/`) and their text is extracted server-side with `pdf-parse` and `mammoth`.
 - **Preview**: PDFs open in the browser's native PDF viewer in a new tab; DOCX/TXT show an extracted-text preview inline in the chat.
-- **Ask questions**: after uploading, ask a specific question (ending in "?", or starting with what/who/when/where/why/how/does/is/tell me/summarize/explain) and the backend does a keyword-overlap search across your uploaded files' sentences, returning the best match with its source filename. For generic requests anywhere in the sentence — "can you verify this and tell me about it," "please describe this image," "analyze this" — the frontend also recognizes those verbs and, if no specific keyword match is found, falls back to a plain overview of the most recently uploaded file (its extracted text or, for images, its caption/objects/OCR) instead of an unrelated generic chatbot reply. This is extractive keyword search, not a real LLM — it finds or summarizes existing content, it doesn't generate a synthesized answer.
+- **Ask questions**: after uploading, ask a specific question (ending in "?", or starting with what/who/when/where/why/how/does/is/tell me/summarize/explain) and the backend finds the best-matching passage across your uploaded files, returning it with its source filename. If nothing in the document answers the question, it says so explicitly instead of falling back to an unrelated generic chatbot reply. For generic requests anywhere in the sentence — "can you verify this and tell me about it," "please describe this image," "analyze this" — the frontend also recognizes those verbs and, if no specific match is found, falls back to a plain overview of the most recently uploaded file (its extracted text or, for images, its caption/objects/OCR).
+- **Matching**: extractive, not generative — it finds an existing passage, it doesn't synthesize a new answer. Two modes:
+  - **Semantic (recommended)**: if `VOYAGE_API_KEY` is set (see `.env.example`), each uploaded file's text is chunked and embedded once at upload time via [Voyage AI](https://www.voyageai.com/) (Anthropic's recommended embeddings provider — Anthropic has no first-party embeddings API). Answering a question embeds just the question and does cosine-similarity search against those precomputed vectors, so it understands paraphrased questions, not just exact keyword matches.
+  - **Keyword fallback**: used automatically when no `VOYAGE_API_KEY` is set, for files uploaded before it was set, or if a Voyage API call fails. Requires a real fraction of the question's meaningful words to literally appear in a passage — good for exact/close phrasing, but won't recognize a heavily paraphrased question that shares no real keywords with the document's wording.
 
 ## Phase 2: Image Intelligence
 

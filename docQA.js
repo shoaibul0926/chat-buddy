@@ -22,6 +22,14 @@ async function extractText(filePath, ext) {
   return '';
 }
 
+// Split on sentence punctuation AND newlines — plain prose (PDFs/DOCX with
+// real sentences) splits fine on punctuation alone, but slide decks, bullet
+// lists, and code snippets often have little to no punctuation, so without
+// the newline split a "chunk" ends up being the entire block of text.
+function chunkText(text) {
+  return (text || '').split(/(?<=[.!?])\s+|\r?\n+/).map(s => s.trim()).filter(Boolean);
+}
+
 const STOPWORDS = new Set([
   'the', 'is', 'a', 'an', 'of', 'to', 'and', 'in', 'on', 'for', 'what', 'does',
   'do', 'did', 'say', 'about', 'tell', 'me', 'file', 'document', 'that', 'this',
@@ -68,19 +76,17 @@ function minOverlapRequired(qWordCount) {
   return Math.max(2, Math.ceil(qWordCount / 2));
 }
 
-function findAnswer(files, question) {
+// Literal keyword-overlap matching. Fast, needs no network/API key, but only
+// finds answers phrased close to the document's own wording — kept as the
+// baseline and as a fallback for files with no precomputed embeddings (no
+// VOYAGE_API_KEY configured, or the embedding call failed at upload time).
+function findAnswerKeyword(files, question) {
   const qWords = words(question);
   if (!qWords.length) return null;
   const minRequired = minOverlapRequired(qWords.length);
   let best = null;
   for (const f of files) {
-    // Split on sentence punctuation AND newlines — plain prose (PDFs/DOCX
-    // with real sentences) splits fine on punctuation alone, but slide decks,
-    // bullet lists, and code snippets often have little to no punctuation,
-    // so without the newline split the "sentence" ends up being the entire
-    // block of text, returning a huge unhelpful wall of text as the answer.
-    const chunks = (f.text || '').split(/(?<=[.!?])\s+|\r?\n+/).map(s => s.trim()).filter(Boolean);
-    for (const s of chunks) {
+    for (const s of chunkText(f.text)) {
       const sWords = words(s);
       if (!sWords.length) continue;
       const overlap = qWords.filter(w => sWords.includes(w)).length;
@@ -100,4 +106,108 @@ function findAnswer(files, question) {
   return best;
 }
 
-module.exports = { extractText, words, findAnswer, STOPWORDS, MAX_ANSWER_LENGTH, minOverlapRequired };
+// --- Semantic matching (Voyage AI embeddings) ---
+//
+// Anthropic has no first-party embeddings endpoint; Voyage AI (acquired by
+// Anthropic, and their recommended embeddings provider for RAG alongside
+// Claude) fills that role. Chunk embeddings are computed once per file at
+// upload time and stored on the file record; answering a question only needs
+// one embedding call (for the question itself) plus local cosine-similarity
+// math against the precomputed vectors.
+const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
+const EMBEDDING_MODEL = 'voyage-3.5-lite';
+const EMBEDDING_DIMENSION = 512;
+const SEMANTIC_SIMILARITY_THRESHOLD = 0.5;
+const EMBEDDING_BATCH_LIMIT = 1000; // Voyage's per-request cap on input texts
+
+function isEmbeddingConfigured() {
+  return Boolean(process.env.VOYAGE_API_KEY);
+}
+
+async function embedTexts(texts, inputType) {
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) throw new Error('VOYAGE_API_KEY is not set');
+  const res = await fetch(VOYAGE_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input: texts,
+      input_type: inputType,
+      output_dimension: EMBEDDING_DIMENSION
+    })
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Voyage embeddings request failed: ${res.status} ${body}`);
+  }
+  const data = await res.json();
+  return data.data.sort((a, b) => a.index - b.index).map(d => d.embedding);
+}
+
+function cosineSimilarity(a, b) {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Computes {text, embedding} pairs for a file's chunks — call once at upload
+// time and store the result on the file record so answering questions later
+// never needs to re-embed the whole document.
+async function embedChunksForFile(text) {
+  const chunks = chunkText(text).filter(c => words(c).length > 0).slice(0, EMBEDDING_BATCH_LIMIT);
+  if (!chunks.length) return [];
+  const embeddings = await module.exports.embedTexts(chunks, 'document');
+  return chunks.map((chunkText, i) => ({ text: chunkText, embedding: embeddings[i] }));
+}
+
+async function findAnswerSemantic(files, question) {
+  const [qEmbedding] = await module.exports.embedTexts([question], 'query');
+  let best = null;
+  for (const f of files) {
+    for (const chunk of f.chunks || []) {
+      const score = cosineSimilarity(qEmbedding, chunk.embedding);
+      if (score < SEMANTIC_SIMILARITY_THRESHOLD) continue;
+      if (!best || score > best.score) {
+        best = { score, sentence: chunk.text, file: f.name };
+      }
+    }
+  }
+  if (best && best.sentence.length > MAX_ANSWER_LENGTH) {
+    best.sentence = best.sentence.slice(0, MAX_ANSWER_LENGTH) + '…';
+  }
+  return best;
+}
+
+// Public entry point: prefer semantic matching for files that have
+// precomputed embeddings, falling back to keyword matching — for files with
+// no embeddings, when no question clears the semantic similarity threshold,
+// or when the embeddings call itself fails (network/API error), so a Voyage
+// outage degrades matching quality instead of breaking Q&A entirely.
+async function findAnswer(files, question) {
+  const embeddedFiles = files.filter(f => Array.isArray(f.chunks) && f.chunks.length);
+  if (embeddedFiles.length && isEmbeddingConfigured()) {
+    try {
+      const semanticMatch = await module.exports.findAnswerSemantic(embeddedFiles, question);
+      if (semanticMatch) return semanticMatch;
+    } catch (e) {
+      console.error('Semantic match failed, falling back to keyword search:', e.message);
+    }
+  }
+  return findAnswerKeyword(files, question);
+}
+
+module.exports = {
+  extractText, words, findAnswer, findAnswerKeyword, findAnswerSemantic,
+  chunkText, embedTexts, embedChunksForFile, cosineSimilarity, isEmbeddingConfigured,
+  STOPWORDS, MAX_ANSWER_LENGTH, minOverlapRequired,
+  EMBEDDING_MODEL, EMBEDDING_DIMENSION, SEMANTIC_SIMILARITY_THRESHOLD
+};
