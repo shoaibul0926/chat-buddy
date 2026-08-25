@@ -2,7 +2,7 @@
 
 **Live: https://chat-buddy-production.up.railway.app**
 
-A chatbot with rule-based chat (or real streaming LLM chat via Anthropic/OpenAI, if configured), an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), a personal knowledge base with RAG, and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
+A chatbot with rule-based chat (or real streaming LLM chat via Anthropic/OpenAI, if configured), AI image generation/editing (OpenAI, if configured), an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), a personal knowledge base with RAG over a real local vector index, and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
 
 ## What changed: real authentication
 
@@ -70,6 +70,11 @@ data.json       Created automatically on first run (git-ignored)
 | `POST /api/knowledge` | Bearer token | `{ title, content }` | adds a knowledge entry (embedded via Voyage if configured) |
 | `PUT /api/knowledge/:id` | Bearer token | `{ title, content }` | edits an entry and re-embeds it |
 | `DELETE /api/knowledge/:id` | Bearer token | — | deletes an entry |
+| `POST /api/images/generate` | Bearer token | `{ prompt, size?, background? }` | generates a new image (OpenAI), saved into the file library |
+| `POST /api/images/:fileId/edit` | Bearer token | `{ prompt }` | freeform edit of an existing image, saved as a new file |
+| `POST /api/images/:fileId/remove-background` | Bearer token | — | removes the background, saved as a new file |
+| `POST /api/images/:fileId/style-transfer` | Bearer token | `{ stylePrompt }` | redraws the image in a described style, saved as a new file |
+| `POST /api/images/:fileId/enhance` | Bearer token | — | AI-enhanced re-render (not a lossless upscale), saved as a new file |
 
 ## Phase 1: Document & File Intelligence
 
@@ -115,8 +120,18 @@ Note: `@tensorflow/tfjs-node` (the fast, native-accelerated backend) was tried f
 ## Phase 5: Knowledge Features
 
 - **Personal knowledge base**: a dedicated "📚 Knowledge" panel (separate from per-conversation chat) for adding titled notes/facts, with edit and two-click-confirm delete — backed by `/api/knowledge`.
-- **Semantic search & RAG**: when `VOYAGE_API_KEY` is set, each knowledge entry (and each uploaded file, reusing Phase 1's existing embedding pipeline) is embedded at save time. Every `/api/chat` request embeds the user's message and retrieves the top-matching chunks across *both* pools, injecting them into the system prompt so the LLM's answer is grounded in the user's own notes and files instead of relying on conversation history alone. Without `VOYAGE_API_KEY`, AI chat still works, just without this retrieval step.
-- Implementation reuses Phase 1's chunking/embedding functions (`docQA.js`'s `chunkText`/`embedChunksForFile`) as-is, adding one new function (`semanticSearchChunks`) for ranked top-K retrieval across multiple sources — the original single-best-match function used by `/api/ask-files` is untouched.
+- **Semantic search & RAG**: when `VOYAGE_API_KEY` is set, each knowledge entry (and each uploaded file, reusing Phase 1's existing embedding pipeline) is embedded at save time. Every `/api/chat` request embeds the user's message and retrieves the top-matching chunks across *both* pools from a real local vector index, injecting them into the system prompt so the LLM's answer is grounded in the user's own notes and files instead of relying on conversation history alone. Without `VOYAGE_API_KEY`, AI chat still works, just without this retrieval step.
+- **Vector storage**: `vectorStore.js` wraps [vectra](https://github.com/Stevenic/vectra), a local file-backed vector index (`DATA_DIR/vector-index/`), filtered by user + source type + source id — real indexed search and per-user isolation, replacing an earlier brute-force in-memory scan that also required loading every user's data (passwords included) just to answer one question. `/api/ask-files` (Phase 1's extractive Q&A) and `/api/chat`'s RAG both query this same index; `data.json` file/knowledge records hold only text and metadata, never embedding vectors.
+
+## Phase A1: Creation Engine (image features)
+
+The first batch of a larger "content creation, not just analysis" phase — full scope also includes audio/speech and video generation, plus mask-based inpainting/outpainting, both deferred to follow-up work. This batch covers the five image features that need nothing but a text prompt, via OpenAI's Images API (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY` — reuses the same `OPENAI_API_KEY` set for Phase 4 chat).
+
+- **Image generation**: `POST /api/images/generate` — a prompt (+ size, transparent-background option) becomes a new image via `gpt-image-1.5`, saved into the user's existing file library.
+- **Image editing**: `POST /api/images/:fileId/edit` — freeform prompt-based edits to an already-uploaded or generated image.
+- **Background removal, style transfer, image enhancement**: `POST /api/images/:fileId/remove-background|style-transfer|enhance` — none of these are separate OpenAI API features; each is a templated call to the same edit endpoint (`background: transparent` for removal, low `input_fidelity` for style transfer, high `input_fidelity`/`quality` for enhancement). Enhancement in particular is a generative re-render, not a deterministic pixel-preserving upscale — presented as such in the UI.
+- Every result is saved as a normal entry in the same file library `POST /api/files` populates — preview, download, and (if `VOYAGE_API_KEY` is set) embedding/RAG all work on generated images automatically, no separate storage system.
+- Each action is a real, billed OpenAI request (`n` is hardcoded to `1` everywhere to avoid accidental multi-image cost from one click) — the Generate button and per-image action row are hidden entirely when `OPENAI_API_KEY` isn't configured, rather than showing controls that would just fail.
 
 ## Deploying
 

@@ -380,3 +380,87 @@ test('chat: rejects a missing message, an invalid model, and an unconfigured pro
   const data = await unconfigured.json();
   assert.match(data.error, /not configured/);
 });
+
+// ---------- Image generation/editing (Phase A1) ----------
+// OPENAI_API_KEY is unset throughout this file, so every route below fails
+// fast on its isConfigured() check without ever reaching a real network
+// call — the actual OpenAI request-building/parsing logic is covered by
+// tests/imageGen.test.js with mocked fetch. These tests verify chat-buddy's
+// own routing/validation only.
+
+function withFakeOpenAiKey(run) {
+  process.env.OPENAI_API_KEY = 'test-key-not-a-real-credential';
+  return Promise.resolve(run()).finally(() => { delete process.env.OPENAI_API_KEY; });
+}
+
+test('images/generate: requires a prompt and a configured provider', async () => {
+  const { data: { token } } = await registerUser(uniqueUsername('olivia'));
+
+  const noPrompt = await fetch(`${baseUrl}/api/images/generate`, {
+    method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({})
+  });
+  assert.equal(noPrompt.status, 400);
+
+  const unconfigured = await fetch(`${baseUrl}/api/images/generate`, {
+    method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({ prompt: 'a cat' })
+  });
+  assert.equal(unconfigured.status, 400);
+  const data = await unconfigured.json();
+  assert.match(data.error, /not configured/);
+});
+
+test('images/:fileId/edit and friends: 404 for an unknown file, 400 for a non-image file, once a provider key is present', async () => {
+  const { data: { token } } = await registerUser(uniqueUsername('paul'));
+
+  // Upload a .txt file — exists, but isn't an image, to exercise the
+  // "not an image" 400 branch shared by all four derived-operation routes.
+  const form = new FormData();
+  form.append('file', new Blob(['just some text'], { type: 'text/plain' }), 'notes.txt');
+  const upload = await fetch(`${baseUrl}/api/files`, { method: 'POST', headers: authHeaders(token), body: form });
+  const uploaded = await upload.json();
+
+  await withFakeOpenAiKey(async () => {
+    const missingFile = await fetch(`${baseUrl}/api/images/does-not-exist/edit`, {
+      method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({ prompt: 'add a hat' })
+    });
+    assert.equal(missingFile.status, 404);
+
+    const notAnImage = await fetch(`${baseUrl}/api/images/${uploaded.file.id}/edit`, {
+      method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({ prompt: 'add a hat' })
+    });
+    assert.equal(notAnImage.status, 400);
+    const data = await notAnImage.json();
+    assert.match(data.error, /not an image/);
+
+    const removeBg = await fetch(`${baseUrl}/api/images/${uploaded.file.id}/remove-background`, {
+      method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({})
+    });
+    assert.equal(removeBg.status, 400);
+
+    const styleTransfer = await fetch(`${baseUrl}/api/images/${uploaded.file.id}/style-transfer`, {
+      method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({ stylePrompt: 'watercolor' })
+    });
+    assert.equal(styleTransfer.status, 400);
+
+    const enhance = await fetch(`${baseUrl}/api/images/${uploaded.file.id}/enhance`, {
+      method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({})
+    });
+    assert.equal(enhance.status, 400);
+  });
+});
+
+test('images/:fileId/edit requires a prompt, images/:fileId/style-transfer requires a stylePrompt', async () => {
+  const { data: { token } } = await registerUser(uniqueUsername('quinn'));
+
+  const noPrompt = await fetch(`${baseUrl}/api/images/some-id/edit`, {
+    method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({})
+  });
+  assert.equal(noPrompt.status, 400);
+  assert.match((await noPrompt.json()).error, /Prompt is required/);
+
+  const noStylePrompt = await fetch(`${baseUrl}/api/images/some-id/style-transfer`, {
+    method: 'POST', headers: authHeaders(token, true), body: JSON.stringify({})
+  });
+  assert.equal(noStylePrompt.status, 400);
+  assert.match((await noStylePrompt.json()).error, /style description is required/);
+});

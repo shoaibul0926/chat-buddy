@@ -532,7 +532,7 @@
     background: var(--accent-hover);
   }
 
-  #attachBtn, #videoAttachBtn, #webcamBtn, #docAttachBtn, #micBtn {
+  #attachBtn, #videoAttachBtn, #webcamBtn, #docAttachBtn, #generateImageBtn, #micBtn {
     background: var(--bubble-bot-bg);
     color: var(--text);
     border: none;
@@ -545,8 +545,13 @@
     transition: background 0.2s;
   }
 
-  #attachBtn:hover, #videoAttachBtn:hover, #webcamBtn:hover, #docAttachBtn:hover, #micBtn:hover {
+  #attachBtn:hover, #videoAttachBtn:hover, #webcamBtn:hover, #docAttachBtn:hover, #generateImageBtn:hover, #micBtn:hover {
     filter: brightness(0.92);
+  }
+
+  #generateImageBtn:disabled, .image-actions button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .preview-btn {
@@ -592,6 +597,38 @@
     border-radius: 10px;
     display: block;
     margin-bottom: 4px;
+  }
+
+  .generated-image img {
+    max-height: 260px;
+  }
+
+  .image-caption {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    font-style: italic;
+  }
+
+  .image-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .image-actions button {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .image-actions button:hover {
+    background: var(--accent-hover);
   }
 
   #webcamOverlay {
@@ -935,7 +972,7 @@
 
   /* ---------- Knowledge base overlay ---------- */
 
-  #knowledgeOverlay {
+  #knowledgeOverlay, #generateImageOverlay, #imageActionOverlay {
     position: absolute;
     inset: 0;
     background: rgba(0,0,0,0.4);
@@ -946,9 +983,9 @@
     padding: 16px;
   }
 
-  #knowledgeOverlay.open { display: flex; }
+  #knowledgeOverlay.open, #generateImageOverlay.open, #imageActionOverlay.open { display: flex; }
 
-  #knowledgeCard {
+  #knowledgeCard, #generateImageCard, #imageActionCard {
     background: var(--bg);
     color: var(--text);
     border-radius: 12px;
@@ -959,7 +996,7 @@
     padding: 18px;
   }
 
-  #knowledgeCard h3 {
+  #knowledgeCard h3, #generateImageCard h3, #imageActionCard h3 {
     margin: 0 0 12px;
     color: var(--accent);
     display: flex;
@@ -967,7 +1004,7 @@
     align-items: center;
   }
 
-  #closeKnowledgeBtn {
+  #closeKnowledgeBtn, #closeGenerateImageBtn, #closeImageActionBtn {
     background: none;
     border: none;
     font-size: 18px;
@@ -1125,6 +1162,39 @@
       </div>
     </div>
 
+    <div id="generateImageOverlay">
+      <div id="generateImageCard">
+        <h3>Generate image <button id="closeGenerateImageBtn">✕</button></h3>
+        <div class="settings-hint" id="generateImageNotConfiguredHint" style="display:none;">Set OPENAI_API_KEY on the server to enable image generation.</div>
+        <div class="settings-hint">Each generation is a real, billed OpenAI API call.</div>
+        <div class="settings-section">
+          <textarea id="generateImagePromptInput" placeholder="Describe the image you want..." style="min-height:80px;"></textarea>
+          <select id="generateImageSizeSelect">
+            <option value="auto">Auto size</option>
+            <option value="1024x1024">Square</option>
+            <option value="1024x1536">Portrait</option>
+            <option value="1536x1024">Landscape</option>
+          </select>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); margin-bottom:6px;">
+            <input id="generateImageTransparentCheckbox" type="checkbox" /> Transparent background
+          </label>
+          <button class="settings-btn" id="generateImageSubmitBtn" type="button">Generate</button>
+        </div>
+        <div class="settings-msg" id="generateImageMsg"></div>
+      </div>
+    </div>
+
+    <div id="imageActionOverlay">
+      <div id="imageActionCard">
+        <h3><span id="imageActionTitle">Edit image</span> <button id="closeImageActionBtn">✕</button></h3>
+        <div class="settings-section">
+          <textarea id="imageActionPromptInput" placeholder="Describe the change..." style="min-height:70px;"></textarea>
+          <button class="settings-btn" id="imageActionSubmitBtn" type="button">Apply</button>
+        </div>
+        <div class="settings-msg" id="imageActionMsg"></div>
+      </div>
+    </div>
+
     <div id="messages"></div>
     <div id="inputArea">
       <div id="toolRow">
@@ -1135,6 +1205,7 @@
         <button id="webcamBtn" title="Take a photo with your webcam">📷</button>
         <button id="docAttachBtn" title="Upload a PDF, DOCX, or TXT file">📄</button>
         <input id="docFileInput" type="file" accept=".pdf,.docx,.txt" hidden />
+        <button id="generateImageBtn" title="Generate an image">🎨</button>
         <button id="micBtn" title="Ask by voice">🎤</button>
       </div>
       <div id="textRow">
@@ -1249,6 +1320,24 @@
   const cancelKnowledgeEditBtn = document.getElementById('cancelKnowledgeEditBtn');
   const knowledgeMsg = document.getElementById('knowledgeMsg');
   const knowledgeList = document.getElementById('knowledgeList');
+
+  const generateImageBtn = document.getElementById('generateImageBtn');
+  const generateImageOverlay = document.getElementById('generateImageOverlay');
+  const closeGenerateImageBtn = document.getElementById('closeGenerateImageBtn');
+  const generateImageNotConfiguredHint = document.getElementById('generateImageNotConfiguredHint');
+  const generateImagePromptInput = document.getElementById('generateImagePromptInput');
+  const generateImageSizeSelect = document.getElementById('generateImageSizeSelect');
+  const generateImageTransparentCheckbox = document.getElementById('generateImageTransparentCheckbox');
+  const generateImageSubmitBtn = document.getElementById('generateImageSubmitBtn');
+  const generateImageMsg = document.getElementById('generateImageMsg');
+
+  const imageActionOverlay = document.getElementById('imageActionOverlay');
+  const closeImageActionBtn = document.getElementById('closeImageActionBtn');
+  const imageActionTitle = document.getElementById('imageActionTitle');
+  const imageActionPromptInput = document.getElementById('imageActionPromptInput');
+  const imageActionSubmitBtn = document.getElementById('imageActionSubmitBtn');
+  const imageActionMsg = document.getElementById('imageActionMsg');
+  let imageActionTarget = null;
 
   function authHeaders(json) {
     const h = { Authorization: 'Bearer ' + authToken };
@@ -1481,6 +1570,183 @@
     return Boolean(aiConfig.configured && Object.values(aiConfig.configured).some(Boolean));
   }
 
+  function imageFeaturesConfigured() {
+    return Boolean(aiConfig.configured && aiConfig.configured.openai);
+  }
+
+  // Disables/relabels the toolbar entry point once we know whether OpenAI is
+  // configured — no dead button that just 400s on click.
+  function applyImageFeatureGating() {
+    const enabled = imageFeaturesConfigured();
+    generateImageBtn.disabled = !enabled;
+    generateImageBtn.title = enabled ? 'Generate an image' : 'Generate an image (set OPENAI_API_KEY on the server to enable)';
+  }
+
+  // Action row appended under any image's chat bubble (freshly generated or
+  // previously uploaded) — omitted entirely when OpenAI isn't configured,
+  // rather than rendering buttons that would just 400.
+  function imageActionsHtml(fileId) {
+    if (!imageFeaturesConfigured()) return '';
+    return `<div class="image-actions">` +
+      `<button onclick="startImageEdit('${fileId}')">✏️ Edit</button>` +
+      `<button onclick="runImageAction('${fileId}','remove-background')">🎭 Remove background</button>` +
+      `<button onclick="startImageStyleTransfer('${fileId}')">🎨 Style transfer</button>` +
+      `<button onclick="runImageAction('${fileId}','enhance')">✨ Enhance</button>` +
+      `</div>`;
+  }
+
+  async function fetchFileAsDataUrl(fileId) {
+    try {
+      const res = await fetch('/api/files/' + fileId + '/download', { headers: { Authorization: 'Bearer ' + authToken } });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Renders a generated/edited image as a chat bubble: the image itself
+  // (fetched as a data URL — GET /api/files/:id/download needs a Bearer
+  // header an <img src> can't send, so plain-URL embedding isn't an option),
+  // its prompt as a caption, and the same action row every image gets.
+  async function addGeneratedImageMessage(fileRecord, sender) {
+    userFiles.push({ id: fileRecord.id, name: fileRecord.name, type: fileRecord.type, size: fileRecord.size, meta: fileRecord.meta });
+    const dataUrl = await fetchFileAsDataUrl(fileRecord.id);
+    const imgHtml = dataUrl ? `<img src="${dataUrl}" />` : '';
+    const captionHtml = fileRecord.meta && fileRecord.meta.prompt
+      ? `<div class="image-caption">${escapeHtml(fileRecord.meta.prompt)}</div>` : '';
+    const html = imgHtml + captionHtml + imageActionsHtml(fileRecord.id);
+    addHtmlMessage(html, sender, { extraClass: 'generated-image' });
+  }
+
+  function openGenerateImageOverlay() {
+    generateImagePromptInput.value = '';
+    generateImageSizeSelect.value = 'auto';
+    generateImageTransparentCheckbox.checked = false;
+    generateImageMsg.textContent = '';
+    generateImageNotConfiguredHint.style.display = imageFeaturesConfigured() ? 'none' : 'block';
+    generateImageOverlay.classList.add('open');
+  }
+
+  generateImageBtn.addEventListener('click', openGenerateImageOverlay);
+  closeGenerateImageBtn.addEventListener('click', () => generateImageOverlay.classList.remove('open'));
+
+  generateImageSubmitBtn.addEventListener('click', async () => {
+    const prompt = generateImagePromptInput.value.trim();
+    if (!prompt) {
+      generateImageMsg.textContent = 'Enter a prompt first.';
+      generateImageMsg.className = 'settings-msg error';
+      return;
+    }
+    generateImageSubmitBtn.disabled = true;
+    generateImageMsg.textContent = 'Generating…';
+    generateImageMsg.className = 'settings-msg';
+    try {
+      const res = await fetch('/api/images/generate', {
+        method: 'POST', headers: authHeaders(true),
+        body: JSON.stringify({
+          prompt,
+          size: generateImageSizeSelect.value,
+          background: generateImageTransparentCheckbox.checked ? 'transparent' : 'auto'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        generateImageMsg.textContent = data.error || 'Could not generate that image.';
+        generateImageMsg.className = 'settings-msg error';
+        return;
+      }
+      generateImageOverlay.classList.remove('open');
+      await addGeneratedImageMessage(data.file, 'bot');
+    } catch (e) {
+      generateImageMsg.textContent = "Couldn't reach the server.";
+      generateImageMsg.className = 'settings-msg error';
+    } finally {
+      generateImageSubmitBtn.disabled = false;
+    }
+  });
+
+  window.startImageEdit = function (fileId) {
+    imageActionTarget = { fileId, type: 'edit' };
+    imageActionTitle.textContent = 'Edit image';
+    imageActionPromptInput.placeholder = 'Describe the change...';
+    imageActionPromptInput.value = '';
+    imageActionMsg.textContent = '';
+    imageActionOverlay.classList.add('open');
+  };
+
+  window.startImageStyleTransfer = function (fileId) {
+    imageActionTarget = { fileId, type: 'style-transfer' };
+    imageActionTitle.textContent = 'Style transfer';
+    imageActionPromptInput.placeholder = 'Describe the style (e.g. watercolor painting)...';
+    imageActionPromptInput.value = '';
+    imageActionMsg.textContent = '';
+    imageActionOverlay.classList.add('open');
+  };
+
+  closeImageActionBtn.addEventListener('click', () => imageActionOverlay.classList.remove('open'));
+
+  imageActionSubmitBtn.addEventListener('click', async () => {
+    if (!imageActionTarget) return;
+    const promptValue = imageActionPromptInput.value.trim();
+    if (!promptValue) {
+      imageActionMsg.textContent = 'Enter a description first.';
+      imageActionMsg.className = 'settings-msg error';
+      return;
+    }
+    const { fileId, type } = imageActionTarget;
+    const endpoint = type === 'edit' ? 'edit' : 'style-transfer';
+    const body = type === 'edit' ? { prompt: promptValue } : { stylePrompt: promptValue };
+    imageActionSubmitBtn.disabled = true;
+    imageActionMsg.textContent = 'Working…';
+    imageActionMsg.className = 'settings-msg';
+    try {
+      const res = await fetch('/api/images/' + fileId + '/' + endpoint, {
+        method: 'POST', headers: authHeaders(true), body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        imageActionMsg.textContent = data.error || 'That action failed.';
+        imageActionMsg.className = 'settings-msg error';
+        return;
+      }
+      imageActionOverlay.classList.remove('open');
+      await addGeneratedImageMessage(data.file, 'bot');
+    } catch (e) {
+      imageActionMsg.textContent = "Couldn't reach the server.";
+      imageActionMsg.className = 'settings-msg error';
+    } finally {
+      imageActionSubmitBtn.disabled = false;
+    }
+  });
+
+  // One-click actions (no prompt needed) — shown a typing indicator like any
+  // other bot reply while the request is in flight.
+  window.runImageAction = async function (fileId, action) {
+    const typingEl = showTyping();
+    try {
+      const res = await fetch('/api/images/' + fileId + '/' + action, {
+        method: 'POST', headers: authHeaders(true), body: JSON.stringify({})
+      });
+      const data = await res.json();
+      typingEl.remove();
+      if (!res.ok) {
+        addMessage(data.error || 'That action failed.', 'bot');
+        return;
+      }
+      await addGeneratedImageMessage(data.file, 'bot');
+    } catch (e) {
+      typingEl.remove();
+      addMessage("Couldn't reach the server for that action.", 'bot');
+    }
+  };
+
   // Resolves the provider/model to actually chat with: the current
   // conversation's own choice if it has one, else the account default. Only
   // returns a usable pair if that provider is actually configured on the
@@ -1528,6 +1794,7 @@
       await loadConversationsList();
       await loadUserFiles();
       await loadAiConfig();
+      applyImageFeatureGating();
       await loadPromptTemplates();
       await loadKnowledgeEntries();
       if (conversations.length === 0) {
@@ -2351,6 +2618,7 @@
         html += `<br>Text found: "${escapeHtml(ocrSnippet)}${meta.ocrText.length > 300 ? '…' : ''}"`;
       }
       html += `<br><button class="preview-btn" onclick="previewFile('${data.file.id}')">👁 Preview</button>`;
+      html += imageActionsHtml(data.file.id);
       addHtmlMessage(html, 'bot');
       addMessage('This image is saved — ask me anything about it any time.', 'bot');
     } catch (e) {

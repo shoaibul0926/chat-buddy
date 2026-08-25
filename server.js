@@ -14,6 +14,7 @@ const db = require('./db');
 const { extractText, findAnswer, embedChunksForFile, embedTexts, isEmbeddingConfigured } = require('./docQA');
 const ai = require('./ai');
 const vectorStore = require('./vectorStore');
+const imageGen = require('./imageGen');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
@@ -256,6 +257,153 @@ app.post('/api/ask-files', requireAuth, async (req, res) => {
   if (!files.length) return res.json({ answer: null });
   const match = await findAnswer(req.user.id, files, question);
   res.json(match ? { answer: match.sentence, source: match.file } : { answer: null });
+});
+
+const MIME_TYPES_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', bmp: 'image/bmp' };
+
+function readImageFileBytes(userId, file) {
+  const filePath = path.join(UPLOAD_DIR, String(userId), file.storedName);
+  return { buffer: fs.readFileSync(filePath), mimeType: MIME_TYPES_BY_EXT[file.type] || 'application/octet-stream' };
+}
+
+// Persists an OpenAI-returned image buffer into the user's existing file
+// library — the same one POST /api/files populates — so preview, download,
+// and (if VOYAGE_API_KEY is set) embedding/RAG all work on generated images
+// for free, with no new storage system.
+function saveGeneratedImage(userId, buffer, { name, meta }) {
+  const id = crypto.randomUUID();
+  const storedName = id + '.png';
+  const dir = path.join(UPLOAD_DIR, String(userId));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, storedName), buffer);
+  const fileRecord = {
+    id,
+    name: name || `generated-${Date.now()}.png`,
+    type: 'png',
+    size: buffer.length,
+    storedName,
+    uploadedAt: new Date().toISOString(),
+    text: meta.prompt || '',
+    meta
+  };
+  db.addFile(userId, fileRecord);
+  return fileRecord;
+}
+
+function toFileResponse(fileRecord) {
+  return {
+    id: fileRecord.id, name: fileRecord.name, type: fileRecord.type, size: fileRecord.size,
+    uploadedAt: fileRecord.uploadedAt, meta: fileRecord.meta
+  };
+}
+
+app.post('/api/images/generate', requireAuth, async (req, res) => {
+  const { prompt, size, background } = req.body || {};
+  if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Prompt is required.' });
+  if (!imageGen.isConfigured()) return res.status(400).json({ error: 'Image generation is not configured on the server.' });
+  try {
+    const { buffer } = await imageGen.generateImage({
+      prompt: prompt.trim().slice(0, 4000),
+      size: size || 'auto',
+      background: background || 'auto'
+    });
+    const fileRecord = saveGeneratedImage(req.user.id, buffer, {
+      name: `generated-${Date.now()}.png`,
+      meta: { generated: true, operation: 'generate', prompt: prompt.trim().slice(0, 4000) }
+    });
+    res.json({ file: toFileResponse(fileRecord) });
+  } catch (e) {
+    console.error('Image generation failed:', e.message);
+    res.status(502).json({ error: 'Image generation failed. Please try again.' });
+  }
+});
+
+function requireSourceImage(req, res) {
+  const file = db.getFile(req.user.id, req.params.fileId);
+  if (!file) { res.status(404).json({ error: 'Not found' }); return null; }
+  if (!IMAGE_EXTENSIONS.includes('.' + file.type)) {
+    res.status(400).json({ error: 'That file is not an image.' });
+    return null;
+  }
+  return file;
+}
+
+app.post('/api/images/:fileId/edit', requireAuth, async (req, res) => {
+  const { prompt } = req.body || {};
+  if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Prompt is required.' });
+  if (!imageGen.isConfigured()) return res.status(400).json({ error: 'Image editing is not configured on the server.' });
+  const file = requireSourceImage(req, res);
+  if (!file) return;
+  try {
+    const { buffer: srcBuffer, mimeType } = readImageFileBytes(req.user.id, file);
+    const trimmedPrompt = prompt.trim().slice(0, 4000);
+    const { buffer } = await imageGen.editImage({ imageBuffer: srcBuffer, mimeType, prompt: trimmedPrompt });
+    const fileRecord = saveGeneratedImage(req.user.id, buffer, {
+      name: `edited-${file.name}.png`,
+      meta: { generated: true, operation: 'edit', prompt: trimmedPrompt, sourceFileId: file.id }
+    });
+    res.json({ file: toFileResponse(fileRecord) });
+  } catch (e) {
+    console.error('Image edit failed:', e.message);
+    res.status(502).json({ error: 'Image edit failed. Please try again.' });
+  }
+});
+
+app.post('/api/images/:fileId/remove-background', requireAuth, async (req, res) => {
+  if (!imageGen.isConfigured()) return res.status(400).json({ error: 'Image editing is not configured on the server.' });
+  const file = requireSourceImage(req, res);
+  if (!file) return;
+  try {
+    const { buffer: srcBuffer, mimeType } = readImageFileBytes(req.user.id, file);
+    const { buffer } = await imageGen.removeBackground({ imageBuffer: srcBuffer, mimeType });
+    const fileRecord = saveGeneratedImage(req.user.id, buffer, {
+      name: `no-bg-${file.name}.png`,
+      meta: { generated: true, operation: 'removeBackground', sourceFileId: file.id }
+    });
+    res.json({ file: toFileResponse(fileRecord) });
+  } catch (e) {
+    console.error('Background removal failed:', e.message);
+    res.status(502).json({ error: 'Background removal failed. Please try again.' });
+  }
+});
+
+app.post('/api/images/:fileId/style-transfer', requireAuth, async (req, res) => {
+  const { stylePrompt } = req.body || {};
+  if (!stylePrompt || !stylePrompt.trim()) return res.status(400).json({ error: 'A style description is required.' });
+  if (!imageGen.isConfigured()) return res.status(400).json({ error: 'Image editing is not configured on the server.' });
+  const file = requireSourceImage(req, res);
+  if (!file) return;
+  try {
+    const { buffer: srcBuffer, mimeType } = readImageFileBytes(req.user.id, file);
+    const trimmedStyle = stylePrompt.trim().slice(0, 1000);
+    const { buffer } = await imageGen.styleTransferImage({ imageBuffer: srcBuffer, mimeType, stylePrompt: trimmedStyle });
+    const fileRecord = saveGeneratedImage(req.user.id, buffer, {
+      name: `styled-${file.name}.png`,
+      meta: { generated: true, operation: 'styleTransfer', prompt: trimmedStyle, sourceFileId: file.id }
+    });
+    res.json({ file: toFileResponse(fileRecord) });
+  } catch (e) {
+    console.error('Style transfer failed:', e.message);
+    res.status(502).json({ error: 'Style transfer failed. Please try again.' });
+  }
+});
+
+app.post('/api/images/:fileId/enhance', requireAuth, async (req, res) => {
+  if (!imageGen.isConfigured()) return res.status(400).json({ error: 'Image editing is not configured on the server.' });
+  const file = requireSourceImage(req, res);
+  if (!file) return;
+  try {
+    const { buffer: srcBuffer, mimeType } = readImageFileBytes(req.user.id, file);
+    const { buffer } = await imageGen.enhanceImage({ imageBuffer: srcBuffer, mimeType });
+    const fileRecord = saveGeneratedImage(req.user.id, buffer, {
+      name: `enhanced-${file.name}.png`,
+      meta: { generated: true, operation: 'enhance', sourceFileId: file.id }
+    });
+    res.json({ file: toFileResponse(fileRecord) });
+  } catch (e) {
+    console.error('Image enhancement failed:', e.message);
+    res.status(502).json({ error: 'Image enhancement failed. Please try again.' });
+  }
 });
 
 app.get('/api/ai/config', requireAuth, (req, res) => {
