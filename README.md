@@ -2,7 +2,7 @@
 
 **Live: https://chat-buddy-production.up.railway.app**
 
-A chatbot with rule-based chat, an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
+A chatbot with rule-based chat (or real streaming LLM chat via Anthropic/OpenAI, if configured), an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), a personal knowledge base with RAG, and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
 
 ## What changed: real authentication
 
@@ -60,6 +60,16 @@ data.json       Created automatically on first run (git-ignored)
 | `GET /api/files/:id` | Bearer token | — | returns the file's full extracted text |
 | `GET /api/files/:id/download` | Bearer token | — | streams the original file (inline, for preview) |
 | `POST /api/ask-files` | Bearer token | `{ question }` | finds the best-matching passage across the user's uploaded files (semantic match if `VOYAGE_API_KEY` is set, otherwise keyword-overlap search) |
+| `GET /api/ai/config` | Bearer token | — | lists available AI providers/models and which are configured on the server |
+| `POST /api/chat` | Bearer token | `{ conversationId?, message, provider, model, systemPrompt? }` | streams a real LLM reply as newline-delimited JSON (`{delta}` lines, then `{done:true}`, or `{error}` on failure) |
+| `GET /api/prompt-templates` | Bearer token | — | lists the user's saved system-prompt templates |
+| `POST /api/prompt-templates` | Bearer token | `{ name, systemPrompt }` | saves a new template |
+| `PATCH /api/prompt-templates/:id` | Bearer token | `{ name?, systemPrompt? }` | renames/edits a template |
+| `DELETE /api/prompt-templates/:id` | Bearer token | — | deletes a template |
+| `GET /api/knowledge` | Bearer token | — | lists the user's knowledge base entries |
+| `POST /api/knowledge` | Bearer token | `{ title, content }` | adds a knowledge entry (embedded via Voyage if configured) |
+| `PUT /api/knowledge/:id` | Bearer token | `{ title, content }` | edits an entry and re-embeds it |
+| `DELETE /api/knowledge/:id` | Bearer token | — | deletes an entry |
 
 ## Phase 1: Document & File Intelligence
 
@@ -92,6 +102,22 @@ Note: `@tensorflow/tfjs-node` (the fast, native-accelerated backend) was tried f
 - **Rename/delete chats**: inline rename (click the pencil, type, Enter/blur to save) and a two-click delete confirmation (no native `confirm()`/`prompt()` dialogs anywhere in the UI) for both conversations and folders.
 - The per-user file library (Phases 1–2) is unchanged by this — files stay attached to the account, not to a single conversation, so you can ask any conversation about any file you've uploaded.
 
+## Phase 4: AI Improvements
+
+- **Real LLM chat**: when at least one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` is set (see `.env.example`), chat is answered by a real model instead of the rule-based bot — a strict upgrade, so it replaces the old keyword-matching replies and extractive file Q&A entirely rather than sitting alongside them. With neither key set, the app behaves exactly as in Phases 1–3.
+- **Multiple providers**: Anthropic and OpenAI, chosen per-conversation (or as an account-wide default) from Settings → AI chat. Only providers with a key actually configured on the server are selectable.
+- **Model switching**: a curated dropdown per provider (Claude Sonnet 5 / Claude Haiku 4.5; GPT-5 / GPT-5 mini) rather than one hardcoded model.
+- **Custom system prompts**: a free-text system prompt, set per-conversation or as an account default.
+- **Prompt templates**: save/reuse named system prompts from the AI settings panel, backed by `/api/prompt-templates`.
+- **Streaming responses**: replies stream in token-by-token rather than appearing all at once, over a plain chunked NDJSON response (not SSE/`EventSource` — those can't carry this app's `Authorization: Bearer` header or a POST body) read via `fetch()`'s streaming body on the frontend.
+- Implementation: `ai.js` is a from-scratch provider abstraction (raw `fetch`, no SDK — matching the zero-SDK approach the existing Voyage AI integration already established), parsing each provider's own SSE streaming format internally and re-emitting plain delta strings to `server.js`'s `/api/chat` route.
+
+## Phase 5: Knowledge Features
+
+- **Personal knowledge base**: a dedicated "📚 Knowledge" panel (separate from per-conversation chat) for adding titled notes/facts, with edit and two-click-confirm delete — backed by `/api/knowledge`.
+- **Semantic search & RAG**: when `VOYAGE_API_KEY` is set, each knowledge entry (and each uploaded file, reusing Phase 1's existing embedding pipeline) is embedded at save time. Every `/api/chat` request embeds the user's message and retrieves the top-matching chunks across *both* pools, injecting them into the system prompt so the LLM's answer is grounded in the user's own notes and files instead of relying on conversation history alone. Without `VOYAGE_API_KEY`, AI chat still works, just without this retrieval step.
+- Implementation reuses Phase 1's chunking/embedding functions (`docQA.js`'s `chunkText`/`embedChunksForFile`) as-is, adding one new function (`semanticSearchChunks`) for ranked top-K retrieval across multiple sources — the original single-best-match function used by `/api/ask-files` is untouched.
+
 ## Deploying
 
 Currently deployed on **Railway** at https://chat-buddy-production.up.railway.app (project: `chat-buddy`, deployed via `railway up`; `JWT_SECRET` and `DATA_DIR=/data` are set as environment variables there).
@@ -107,7 +133,7 @@ GitHub Pages won't work for this app (no backend) — the repo page's README is 
 
 ## Known limitations
 
-- Chat itself is still rule-based (not a real LLM) — it's a keyword/pattern matching engine plus a lightweight "agent" that splits multi-part requests into steps.
+- Without `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` set, chat is still the original rule-based bot (not a real LLM) — a keyword/pattern matching engine plus a lightweight "agent" that splits multi-part requests into steps. Set one of those keys (Phase 4) to get real LLM-powered chat instead.
 - `data.json` is a flat file, not a real concurrent-safe database — fine for a small demo, not for scale.
 - Object detection recognizes only the 80 COCO classes (common everyday objects) — it won't identify specific people, brands, or anything outside that set.
 - Captions are templated sentences built from the other analyses, not generated by a vision-language model.

@@ -187,6 +187,27 @@ async function findAnswerSemantic(files, question) {
   return best;
 }
 
+// Retrieves the top-K most relevant chunks across a merged pool of sources
+// (uploaded files + knowledge base entries) for a single query — used for
+// RAG context injection in /api/chat. Unlike findAnswerSemantic (single best
+// chunk overall, for extractive Q&A), this returns multiple ranked results
+// across possibly-multiple sources, and is purely additive: it doesn't touch
+// findAnswerSemantic or any other existing export/behavior.
+async function semanticSearchChunks(pool, query, opts = {}) {
+  const { topK = 5, threshold = SEMANTIC_SIMILARITY_THRESHOLD } = opts;
+  const [qEmbedding] = await module.exports.embedTexts([query], 'query');
+  const scored = [];
+  for (const source of pool) {
+    for (const chunk of source.chunks || []) {
+      const score = cosineSimilarity(qEmbedding, chunk.embedding);
+      if (score < threshold) continue;
+      scored.push({ score, text: chunk.text, sourceLabel: source.sourceLabel });
+    }
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK);
+}
+
 // Public entry point: prefer semantic matching for files that have
 // precomputed embeddings, falling back to keyword matching — for files with
 // no embeddings, when no question clears the semantic similarity threshold,
@@ -206,7 +227,7 @@ async function findAnswer(files, question) {
 }
 
 module.exports = {
-  extractText, words, findAnswer, findAnswerKeyword, findAnswerSemantic,
+  extractText, words, findAnswer, findAnswerKeyword, findAnswerSemantic, semanticSearchChunks,
   chunkText, embedTexts, embedChunksForFile, cosineSimilarity, isEmbeddingConfigured,
   STOPWORDS, MAX_ANSWER_LENGTH, minOverlapRequired,
   EMBEDDING_MODEL, EMBEDDING_DIMENSION, SEMANTIC_SIMILARITY_THRESHOLD

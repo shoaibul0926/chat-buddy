@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const docQA = require('../docQA');
-const { cosineSimilarity, findAnswerSemantic, embedChunksForFile, findAnswer } = docQA;
+const { cosineSimilarity, findAnswerSemantic, embedChunksForFile, findAnswer, semanticSearchChunks } = docQA;
 
 // These tests never call the real Voyage AI API — embedTexts is monkeypatched
 // on the module's exports object (which findAnswer/findAnswerSemantic/
@@ -96,6 +96,38 @@ test('findAnswer prefers a semantic match over the keyword matcher when embeddin
         assert.match(match.sentence, /Reimbursements/);
       }
     )
+  );
+});
+
+test('semanticSearchChunks returns top-K results ranked across a merged pool of sources, above the threshold', async () => {
+  const pool = [
+    { sourceLabel: 'notes.txt', chunks: [{ text: 'best match', embedding: [1, 0, 0] }] },
+    { sourceLabel: 'file.pdf', chunks: [
+      { text: 'second best match', embedding: [0.9, 0.1, 0] },
+      { text: 'irrelevant', embedding: [0, 1, 0] }
+    ] }
+  ];
+  await withMockEmbedTexts(
+    async () => [[1, 0, 0]],
+    async () => {
+      const results = await semanticSearchChunks(pool, 'a query', { topK: 2 });
+      assert.equal(results.length, 2);
+      assert.equal(results[0].text, 'best match');
+      assert.equal(results[0].sourceLabel, 'notes.txt');
+      assert.equal(results[1].text, 'second best match');
+      assert.ok(results[0].score >= results[1].score);
+    }
+  );
+});
+
+test('semanticSearchChunks excludes chunks below the similarity threshold', async () => {
+  const pool = [{ sourceLabel: 'file.pdf', chunks: [{ text: 'orthogonal', embedding: [0, 1] }] }];
+  await withMockEmbedTexts(
+    async () => [[1, 0]],
+    async () => {
+      const results = await semanticSearchChunks(pool, 'a query');
+      assert.deepEqual(results, []);
+    }
   );
 });
 

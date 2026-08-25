@@ -297,6 +297,19 @@
   }
   #newFolderBtn:hover { color: var(--accent); }
 
+  #knowledgeBtn {
+    width: 100%;
+    background: var(--bg-secondary);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  #knowledgeBtn:hover { background: var(--sidebar-hover); }
+
   #newFolderInput {
     width: 100%;
     font-size: 11px;
@@ -885,6 +898,119 @@
 
   .settings-msg.error { color: #c0392b; }
   .settings-msg.ok { color: #2a9d5c; }
+
+  .settings-section select,
+  .settings-section textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text);
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 6px;
+    font-family: inherit;
+  }
+
+  .settings-section textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .settings-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin: -2px 0 6px;
+  }
+
+  .settings-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .settings-row .settings-btn {
+    margin-top: 0;
+  }
+
+  /* ---------- Knowledge base overlay ---------- */
+
+  #knowledgeOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    padding: 16px;
+  }
+
+  #knowledgeOverlay.open { display: flex; }
+
+  #knowledgeCard {
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 340px;
+    max-height: 90%;
+    overflow-y: auto;
+    padding: 18px;
+  }
+
+  #knowledgeCard h3 {
+    margin: 0 0 12px;
+    color: var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  #closeKnowledgeBtn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+
+  .knowledge-item {
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    margin-bottom: 8px;
+  }
+
+  .knowledge-item-title {
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  .knowledge-item-preview {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    white-space: pre-wrap;
+  }
+
+  .knowledge-item-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .knowledge-item-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .knowledge-item-actions button:hover { background: rgba(0,0,0,0.1); }
+  .knowledge-item-actions .delete-confirm { background: #e0405a; color: white; }
 </style>
 
 <div id="app">
@@ -892,6 +1018,7 @@
     <div id="sidebarHeader">
       <div id="sidebarBrand">🤖 Chat Buddy</div>
       <button id="newChatBtn">+ New Chat</button>
+      <button id="knowledgeBtn">📚 Knowledge</button>
       <input id="sidebarSearch" type="text" placeholder="Search all chats..." autocomplete="off" />
     </div>
     <div id="searchResults"></div>
@@ -952,6 +1079,24 @@
         <div class="settings-msg" id="profileMsg"></div>
 
         <div class="settings-section" style="margin-top:16px;">
+          <div class="settings-label">AI chat</div>
+          <div class="settings-hint" id="aiNotConfiguredHint" style="display:none;">
+            Set ANTHROPIC_API_KEY or OPENAI_API_KEY on the server to enable real AI chat. Until then, Chat Buddy uses its built-in rule-based replies.
+          </div>
+          <select id="aiProviderSelect"></select>
+          <select id="aiModelSelect"></select>
+          <select id="aiTemplateSelect"></select>
+          <textarea id="aiSystemPromptInput" placeholder="Custom system prompt (optional)"></textarea>
+          <input id="aiTemplateNameInput" type="text" placeholder="Template name (to save the prompt above)" />
+          <div class="settings-row">
+            <button class="settings-btn secondary" id="saveTemplateBtn" type="button">Save as template</button>
+            <button class="settings-btn secondary" id="deleteTemplateBtn" type="button">Delete template</button>
+          </div>
+        </div>
+        <button class="settings-btn" id="saveAiSettingsBtn">Save AI settings</button>
+        <div class="settings-msg" id="aiSettingsMsg"></div>
+
+        <div class="settings-section" style="margin-top:16px;">
           <div class="settings-label">Change password</div>
           <input id="currentPasswordInput" type="password" placeholder="Current password" />
           <input id="newPasswordInput" type="password" placeholder="New password (6+ chars)" />
@@ -960,6 +1105,23 @@
         <div class="settings-msg" id="passwordMsg"></div>
 
         <button class="settings-btn danger" id="settingsLogoutBtn" style="margin-top:16px;">Logout</button>
+      </div>
+    </div>
+
+    <div id="knowledgeOverlay">
+      <div id="knowledgeCard">
+        <h3>Knowledge base <button id="closeKnowledgeBtn">✕</button></h3>
+        <div class="settings-hint">Add notes and facts here — when AI chat is enabled, relevant entries are automatically pulled in to ground its answers (RAG).</div>
+        <div class="settings-section">
+          <input id="knowledgeTitleInput" type="text" placeholder="Title" />
+          <textarea id="knowledgeContentInput" placeholder="Content" style="min-height:100px;"></textarea>
+          <div class="settings-row">
+            <button class="settings-btn" id="saveKnowledgeEntryBtn" type="button">Save entry</button>
+            <button class="settings-btn secondary" id="cancelKnowledgeEditBtn" type="button" style="display:none;">Cancel edit</button>
+          </div>
+        </div>
+        <div class="settings-msg" id="knowledgeMsg"></div>
+        <div id="knowledgeList"></div>
       </div>
     </div>
 
@@ -1018,6 +1180,15 @@
   let userName = null;
   let notes = [];
 
+  // ---------- Phase 4/5 state: AI chat, prompt templates, knowledge base ----------
+  let convProvider = null;
+  let convModel = null;
+  let convSystemPrompt = null;
+  let aiConfig = { providers: [], configured: {} };
+  let promptTemplates = [];
+  let knowledgeEntries = [];
+  let editingKnowledgeId = null;
+
   const TOKEN_KEY = 'chatBuddyToken';
   const MAX_HISTORY = 40;
   let history = [];
@@ -1057,6 +1228,27 @@
   const changePasswordBtn = document.getElementById('changePasswordBtn');
   const passwordMsg = document.getElementById('passwordMsg');
   const settingsLogoutBtn = document.getElementById('settingsLogoutBtn');
+
+  const aiNotConfiguredHint = document.getElementById('aiNotConfiguredHint');
+  const aiProviderSelect = document.getElementById('aiProviderSelect');
+  const aiModelSelect = document.getElementById('aiModelSelect');
+  const aiTemplateSelect = document.getElementById('aiTemplateSelect');
+  const aiSystemPromptInput = document.getElementById('aiSystemPromptInput');
+  const aiTemplateNameInput = document.getElementById('aiTemplateNameInput');
+  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+  const deleteTemplateBtn = document.getElementById('deleteTemplateBtn');
+  const saveAiSettingsBtn = document.getElementById('saveAiSettingsBtn');
+  const aiSettingsMsg = document.getElementById('aiSettingsMsg');
+
+  const knowledgeBtn = document.getElementById('knowledgeBtn');
+  const knowledgeOverlay = document.getElementById('knowledgeOverlay');
+  const closeKnowledgeBtn = document.getElementById('closeKnowledgeBtn');
+  const knowledgeTitleInput = document.getElementById('knowledgeTitleInput');
+  const knowledgeContentInput = document.getElementById('knowledgeContentInput');
+  const saveKnowledgeEntryBtn = document.getElementById('saveKnowledgeEntryBtn');
+  const cancelKnowledgeEditBtn = document.getElementById('cancelKnowledgeEditBtn');
+  const knowledgeMsg = document.getElementById('knowledgeMsg');
+  const knowledgeList = document.getElementById('knowledgeList');
 
   function authHeaders(json) {
     const h = { Authorization: 'Bearer ' + authToken };
@@ -1139,6 +1331,35 @@
     if (opts.save !== false) pushHistory({ type: 'html', sender, html, time, extraClass: opts.extraClass });
   }
 
+  // Creates a message bubble that fills in incrementally as text arrives,
+  // for real LLM streaming replies. Unlike addMessage/addHtmlMessage, this
+  // doesn't persist anything itself — call .finish(fullText) once the stream
+  // completes to write the assembled message to history in a single save
+  // (matching this app's existing single-write-per-message persistence, not
+  // a write per chunk).
+  function addStreamingMessage(sender) {
+    const time = timestamp();
+    const div = document.createElement('div');
+    div.className = 'msg ' + sender;
+    const textNode = document.createTextNode('');
+    div.appendChild(textNode);
+    const timeEl = document.createElement('span');
+    timeEl.className = 'time';
+    timeEl.textContent = time;
+    div.appendChild(timeEl);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return {
+      append(delta) {
+        textNode.textContent += delta;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      },
+      finish(fullText) {
+        pushHistory({ type: 'text', sender, text: fullText, time });
+      }
+    };
+  }
+
   function renderStoredEntry(entry) {
     const opts = { save: false, time: entry.time, extraClass: entry.extraClass };
     if (entry.type === 'text') addMessage(entry.text, entry.sender, opts);
@@ -1150,6 +1371,9 @@
     messagesEl.innerHTML = '';
     userName = data.userName || null;
     notes = Array.isArray(data.notes) ? data.notes : [];
+    convProvider = data.provider || null;
+    convModel = data.model || null;
+    convSystemPrompt = data.systemPrompt || null;
     history = Array.isArray(data.history) ? data.history : [];
     if (history.length === 0) {
       addMessage("Hi am your chatbot! what I can do for you", 'bot');
@@ -1194,6 +1418,9 @@
     userFiles = [];
     conversations = [];
     folders = [];
+    promptTemplates = [];
+    knowledgeEntries = [];
+    aiConfig = { providers: [], configured: {} };
     currentConversationId = null;
     localStorage.removeItem(TOKEN_KEY);
     authUsername.value = '';
@@ -1229,6 +1456,44 @@
     folders = data.folders || [];
   }
 
+  async function loadAiConfig() {
+    try {
+      const res = await fetch('/api/ai/config', { headers: authHeaders() });
+      if (!res.ok) return;
+      aiConfig = await res.json();
+    } catch (e) {
+      aiConfig = { providers: [], configured: {} };
+    }
+  }
+
+  async function loadPromptTemplates() {
+    try {
+      const res = await fetch('/api/prompt-templates', { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      promptTemplates = data.templates || [];
+    } catch (e) {
+      promptTemplates = [];
+    }
+  }
+
+  function anyProviderConfigured() {
+    return Boolean(aiConfig.configured && Object.values(aiConfig.configured).some(Boolean));
+  }
+
+  // Resolves the provider/model to actually chat with: the current
+  // conversation's own choice if it has one, else the account default. Only
+  // returns a usable pair if that provider is actually configured on the
+  // server right now (a saved choice can go stale if the server's env vars
+  // change) — callers use a null return to fall back to the rule-based bot.
+  function resolveAiSettings() {
+    const provider = convProvider || profile.defaultProvider;
+    const model = convModel || profile.defaultModel;
+    if (!provider || !model) return null;
+    if (!aiConfig.configured || !aiConfig.configured[provider]) return null;
+    return { provider, model };
+  }
+
   async function loadConversationsList() {
     const res = await fetch('/api/conversations', { headers: authHeaders() });
     const data = await res.json();
@@ -1262,6 +1527,9 @@
       await loadFolders();
       await loadConversationsList();
       await loadUserFiles();
+      await loadAiConfig();
+      await loadPromptTemplates();
+      await loadKnowledgeEntries();
       if (conversations.length === 0) {
         await createNewConversation();
       } else {
@@ -1600,6 +1868,18 @@
     passwordMsg.textContent = '';
     currentPasswordInput.value = '';
     newPasswordInput.value = '';
+
+    populateAiProviderSelect();
+    const firstConfigured = aiConfig.providers.find(p => aiConfig.configured && aiConfig.configured[p.id]);
+    aiProviderSelect.value = convProvider || profile.defaultProvider || (firstConfigured ? firstConfigured.id : '');
+    populateAiModelSelect(aiProviderSelect.value);
+    aiModelSelect.value = convModel || profile.defaultModel || (aiModelSelect.options[0] ? aiModelSelect.options[0].value : '');
+    populateAiTemplateSelect();
+    aiTemplateSelect.value = '';
+    aiSystemPromptInput.value = convSystemPrompt || profile.defaultSystemPrompt || '';
+    aiTemplateNameInput.value = '';
+    aiSettingsMsg.textContent = '';
+
     settingsOverlay.classList.add('open');
   }
 
@@ -1657,6 +1937,229 @@
   });
 
   settingsLogoutBtn.addEventListener('click', logout);
+
+  function populateAiProviderSelect() {
+    aiProviderSelect.innerHTML = aiConfig.providers.map(p => {
+      const enabled = Boolean(aiConfig.configured && aiConfig.configured[p.id]);
+      return `<option value="${p.id}" ${enabled ? '' : 'disabled'}>${escapeHtml(p.label)}${enabled ? '' : ' (not configured)'}</option>`;
+    }).join('');
+    aiNotConfiguredHint.style.display = anyProviderConfigured() ? 'none' : 'block';
+  }
+
+  function populateAiModelSelect(providerId) {
+    const provider = aiConfig.providers.find(p => p.id === providerId);
+    const models = provider ? provider.models : [];
+    aiModelSelect.innerHTML = models.map(m => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join('');
+  }
+
+  function populateAiTemplateSelect() {
+    aiTemplateSelect.innerHTML = '<option value="">— none —</option>' +
+      promptTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+  }
+
+  aiProviderSelect.addEventListener('change', () => populateAiModelSelect(aiProviderSelect.value));
+
+  aiTemplateSelect.addEventListener('change', () => {
+    const t = promptTemplates.find(t => t.id === aiTemplateSelect.value);
+    if (t) {
+      aiSystemPromptInput.value = t.systemPrompt;
+      aiTemplateNameInput.value = t.name;
+    }
+  });
+
+  saveTemplateBtn.addEventListener('click', async () => {
+    const name = aiTemplateNameInput.value.trim();
+    const systemPrompt = aiSystemPromptInput.value.trim();
+    if (!name || !systemPrompt) {
+      aiSettingsMsg.textContent = 'Enter a template name and a system prompt first.';
+      aiSettingsMsg.className = 'settings-msg error';
+      return;
+    }
+    try {
+      const res = await fetch('/api/prompt-templates', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ name, systemPrompt }) });
+      const data = await res.json();
+      if (!res.ok) { aiSettingsMsg.textContent = data.error || 'Could not save template.'; aiSettingsMsg.className = 'settings-msg error'; return; }
+      promptTemplates.push(data.template);
+      populateAiTemplateSelect();
+      aiTemplateSelect.value = data.template.id;
+      aiSettingsMsg.textContent = 'Template saved!';
+      aiSettingsMsg.className = 'settings-msg ok';
+    } catch (e) {
+      aiSettingsMsg.textContent = "Couldn't reach the server.";
+      aiSettingsMsg.className = 'settings-msg error';
+    }
+  });
+
+  deleteTemplateBtn.addEventListener('click', async () => {
+    const id = aiTemplateSelect.value;
+    if (!id) return;
+    try {
+      await fetch('/api/prompt-templates/' + id, { method: 'DELETE', headers: authHeaders() });
+      promptTemplates = promptTemplates.filter(t => t.id !== id);
+      populateAiTemplateSelect();
+      aiTemplateSelect.value = '';
+      aiSettingsMsg.textContent = 'Template deleted.';
+      aiSettingsMsg.className = 'settings-msg ok';
+    } catch (e) {
+      aiSettingsMsg.textContent = "Couldn't reach the server.";
+      aiSettingsMsg.className = 'settings-msg error';
+    }
+  });
+
+  // Saves the chosen provider/model/system prompt for the currently open
+  // conversation AND as the account's default for future new conversations —
+  // one button, so "Save" has one simple meaning ("use this from now on")
+  // instead of splitting into two easily-confused save actions.
+  saveAiSettingsBtn.addEventListener('click', async () => {
+    const provider = aiProviderSelect.value || null;
+    const model = aiModelSelect.value || null;
+    const systemPrompt = aiSystemPromptInput.value.trim() || null;
+    try {
+      const requests = [
+        fetch('/api/profile', {
+          method: 'PUT', headers: authHeaders(true),
+          body: JSON.stringify({ defaultProvider: provider, defaultModel: model, defaultSystemPrompt: systemPrompt })
+        })
+      ];
+      if (currentConversationId) {
+        requests.push(fetch('/api/conversations/' + currentConversationId, {
+          method: 'PUT', headers: authHeaders(true),
+          body: JSON.stringify({ provider, model, systemPrompt })
+        }));
+      }
+      const [profileRes] = await Promise.all(requests);
+      if (profileRes.ok) profile = { ...profile, ...(await profileRes.json()) };
+      convProvider = provider;
+      convModel = model;
+      convSystemPrompt = systemPrompt;
+      aiSettingsMsg.textContent = 'Saved! Using this for chat now.';
+      aiSettingsMsg.className = 'settings-msg ok';
+    } catch (e) {
+      aiSettingsMsg.textContent = "Couldn't reach the server.";
+      aiSettingsMsg.className = 'settings-msg error';
+    }
+  });
+
+  async function loadKnowledgeEntries() {
+    try {
+      const res = await fetch('/api/knowledge', { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      knowledgeEntries = data.knowledge || [];
+    } catch (e) {
+      knowledgeEntries = [];
+    }
+  }
+
+  function resetKnowledgeForm() {
+    editingKnowledgeId = null;
+    knowledgeTitleInput.value = '';
+    knowledgeContentInput.value = '';
+    saveKnowledgeEntryBtn.textContent = 'Save entry';
+    cancelKnowledgeEditBtn.style.display = 'none';
+  }
+
+  function renderKnowledgeList() {
+    knowledgeList.innerHTML = '';
+    knowledgeEntries.forEach(entry => {
+      const item = document.createElement('div');
+      item.className = 'knowledge-item';
+
+      const title = document.createElement('div');
+      title.className = 'knowledge-item-title';
+      title.textContent = entry.title;
+      item.appendChild(title);
+
+      const preview = document.createElement('div');
+      preview.className = 'knowledge-item-preview';
+      preview.textContent = entry.content.length > 140 ? entry.content.slice(0, 140) + '…' : entry.content;
+      item.appendChild(preview);
+
+      const actions = document.createElement('div');
+      actions.className = 'knowledge-item-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️ Edit';
+      editBtn.addEventListener('click', () => {
+        editingKnowledgeId = entry.id;
+        knowledgeTitleInput.value = entry.title;
+        knowledgeContentInput.value = entry.content;
+        saveKnowledgeEntryBtn.textContent = 'Update entry';
+        cancelKnowledgeEditBtn.style.display = '';
+        knowledgeMsg.textContent = '';
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '🗑️ Delete';
+      let confirmingDelete = false;
+      deleteBtn.addEventListener('click', () => {
+        if (!confirmingDelete) {
+          confirmingDelete = true;
+          deleteBtn.textContent = '✓ Confirm delete';
+          deleteBtn.classList.add('delete-confirm');
+          setTimeout(() => {
+            if (confirmingDelete) {
+              confirmingDelete = false;
+              deleteBtn.textContent = '🗑️ Delete';
+              deleteBtn.classList.remove('delete-confirm');
+            }
+          }, 3000);
+          return;
+        }
+        fetch('/api/knowledge/' + entry.id, { method: 'DELETE', headers: authHeaders() }).then(() => {
+          knowledgeEntries = knowledgeEntries.filter(k => k.id !== entry.id);
+          if (editingKnowledgeId === entry.id) resetKnowledgeForm();
+          renderKnowledgeList();
+        });
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+      item.appendChild(actions);
+      knowledgeList.appendChild(item);
+    });
+  }
+
+  function openKnowledge() {
+    resetKnowledgeForm();
+    knowledgeMsg.textContent = '';
+    renderKnowledgeList();
+    knowledgeOverlay.classList.add('open');
+  }
+
+  knowledgeBtn.addEventListener('click', openKnowledge);
+  closeKnowledgeBtn.addEventListener('click', () => knowledgeOverlay.classList.remove('open'));
+  cancelKnowledgeEditBtn.addEventListener('click', () => { resetKnowledgeForm(); knowledgeMsg.textContent = ''; });
+
+  saveKnowledgeEntryBtn.addEventListener('click', async () => {
+    const title = knowledgeTitleInput.value.trim();
+    const content = knowledgeContentInput.value.trim();
+    if (!title || !content) {
+      knowledgeMsg.textContent = 'Title and content are both required.';
+      knowledgeMsg.className = 'settings-msg error';
+      return;
+    }
+    try {
+      const url = editingKnowledgeId ? '/api/knowledge/' + editingKnowledgeId : '/api/knowledge';
+      const method = editingKnowledgeId ? 'PUT' : 'POST';
+      const res = await fetch(url, { method, headers: authHeaders(true), body: JSON.stringify({ title, content }) });
+      const data = await res.json();
+      if (!res.ok) { knowledgeMsg.textContent = data.error || 'Could not save entry.'; knowledgeMsg.className = 'settings-msg error'; return; }
+      if (editingKnowledgeId) {
+        const i = knowledgeEntries.findIndex(k => k.id === editingKnowledgeId);
+        if (i !== -1) knowledgeEntries[i] = data.knowledge;
+      } else {
+        knowledgeEntries.unshift(data.knowledge);
+      }
+      resetKnowledgeForm();
+      renderKnowledgeList();
+      knowledgeMsg.textContent = 'Saved!';
+      knowledgeMsg.className = 'settings-msg ok';
+    } catch (e) {
+      knowledgeMsg.textContent = "Couldn't reach the server.";
+      knowledgeMsg.className = 'settings-msg error';
+    }
+  });
 
   function showTyping() {
     const div = document.createElement('div');
@@ -1987,6 +2490,71 @@
     }
   }
 
+  // Streams a real LLM reply from /api/chat (NDJSON body: {delta} lines,
+  // ending in {done:true}, or {error} on a mid-stream provider failure) into
+  // a live-updating bubble. The typing-dots placeholder is swapped for the
+  // real bubble only once the first delta (or an error) actually arrives, so
+  // there's no empty bubble sitting on screen during the request's initial
+  // latency.
+  async function sendToAI(text, { provider, model }) {
+    const systemPrompt = convSystemPrompt || profile.defaultSystemPrompt || '';
+    const typingEl = showTyping();
+    let streaming = null;
+    let fullText = '';
+    function ensureBubble() {
+      if (!streaming) {
+        typingEl.remove();
+        streaming = addStreamingMessage('bot');
+      }
+    }
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({ conversationId: currentConversationId, message: text, provider, model, systemPrompt })
+      });
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        ensureBubble();
+        fullText = data.error || "Sorry, I couldn't reach the AI provider.";
+        streaming.append(fullText);
+      } else {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let event;
+            try { event = JSON.parse(line); } catch (e) { continue; }
+            if (typeof event.delta === 'string') {
+              ensureBubble();
+              fullText += event.delta;
+              streaming.append(event.delta);
+            } else if (event.error) {
+              ensureBubble();
+              const msg = (fullText ? '\n\n' : '') + '⚠️ ' + event.error;
+              fullText += msg;
+              streaming.append(msg);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      ensureBubble();
+      const msg = (fullText ? '\n\n' : '') + "⚠️ Couldn't reach the server.";
+      fullText += msg;
+      streaming.append(msg);
+    }
+    ensureBubble();
+    streaming.finish(fullText || '(no response)');
+  }
+
   function addVideoMessage(url, sender) {
     const time = timestamp();
     const div = document.createElement('div');
@@ -2240,6 +2808,20 @@
     addMessage(text, 'user');
     inputEl.value = '';
     sendBtn.disabled = true;
+
+    // Real AI chat, once a provider is configured on the server and chosen
+    // (per-conversation or as an account default), replaces the rule-based
+    // bot and extractive file Q&A entirely — RAG in /api/chat already pulls
+    // in the user's files/knowledge base, so this is a strict upgrade over
+    // the old fileIntent/generalQuestion branch below, not an addition to it.
+    const aiSettings = resolveAiSettings();
+    if (aiSettings) {
+      sendToAI(text, aiSettings).finally(() => {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      });
+      return;
+    }
 
     const typingEl = showTyping();
     setTimeout(async () => {

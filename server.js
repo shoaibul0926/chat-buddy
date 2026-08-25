@@ -11,7 +11,8 @@ const tf = require('@tensorflow/tfjs');
 const cocoSsd = require('@tensorflow-models/coco-ssd');
 const { Jimp } = require('jimp');
 const db = require('./db');
-const { extractText, findAnswer, embedChunksForFile, isEmbeddingConfigured } = require('./docQA');
+const { extractText, findAnswer, embedChunksForFile, isEmbeddingConfigured, semanticSearchChunks } = require('./docQA');
+const ai = require('./ai');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
@@ -255,6 +256,164 @@ app.post('/api/ask-files', requireAuth, async (req, res) => {
   res.json(match ? { answer: match.sentence, source: match.file } : { answer: null });
 });
 
+app.get('/api/ai/config', requireAuth, (req, res) => {
+  const providers = Object.values(ai.PROVIDERS).map(p => ({ id: p.id, label: p.label, models: p.models }));
+  const configured = {
+    anthropic: ai.isProviderConfigured('anthropic'),
+    openai: ai.isProviderConfigured('openai')
+  };
+  res.json({ providers, configured });
+});
+
+// Builds { role, content } messages from stored conversation history for LLM
+// context. HTML-type entries (agent-trace bubbles) are excluded — they're
+// UI presentation, not real conversational content.
+function buildMessagesFromHistory(history, limit) {
+  const textEntries = (history || []).filter(e => e.type !== 'html' && typeof e.text === 'string');
+  const recent = textEntries.slice(-limit);
+  return recent.map(e => ({ role: e.sender === 'user' ? 'user' : 'assistant', content: e.text }));
+}
+
+app.post('/api/chat', requireAuth, async (req, res) => {
+  const { conversationId, message, provider, model, systemPrompt } = req.body || {};
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Missing message' });
+  }
+  if (!provider || !model || !ai.isValidModel(provider, model)) {
+    return res.status(400).json({ error: 'Invalid provider/model' });
+  }
+  if (!ai.isProviderConfigured(provider)) {
+    return res.status(400).json({ error: `${provider} is not configured on the server.` });
+  }
+
+  const conversation = conversationId ? db.getConversation(req.user.id, conversationId) : null;
+  const historyMessages = buildMessagesFromHistory(conversation ? conversation.history : [], 20);
+
+  // RAG: ground the answer in the user's knowledge base + uploaded files
+  // when embeddings are available. No-ops gracefully otherwise (no
+  // VOYAGE_API_KEY, nothing embedded yet, or the embedding call fails) — the
+  // LLM just answers from conversation history alone, same degradation
+  // philosophy as the rest of this codebase's Voyage integration.
+  let effectiveSystemPrompt = typeof systemPrompt === 'string' ? systemPrompt : '';
+  if (isEmbeddingConfigured()) {
+    try {
+      const files = db.listFiles(req.user.id).filter(f => Array.isArray(f.chunks) && f.chunks.length);
+      const knowledge = db.listKnowledge(req.user.id).filter(k => Array.isArray(k.chunks) && k.chunks.length);
+      const pool = [
+        ...files.map(f => ({ sourceLabel: f.name, chunks: f.chunks })),
+        ...knowledge.map(k => ({ sourceLabel: k.title, chunks: k.chunks }))
+      ];
+      if (pool.length) {
+        const results = await semanticSearchChunks(pool, message);
+        if (results.length) {
+          const context = results.map(r => `[${r.sourceLabel}]\n${r.text}`).join('\n\n');
+          effectiveSystemPrompt = (effectiveSystemPrompt ? effectiveSystemPrompt + '\n\n' : '') +
+            `Relevant information from the user's knowledge base and files:\n\n${context}`;
+        }
+      }
+    } catch (e) {
+      console.error('RAG retrieval failed, continuing without context:', e.message);
+    }
+  }
+
+  // NDJSON over a plain chunked response, not real SSE/EventSource:
+  // EventSource can't send the Authorization: Bearer header this app's auth
+  // relies on and doesn't support POST bodies, so the frontend reads this via
+  // fetch()'s streaming body instead — no need for the text/event-stream
+  // protocol at all.
+  res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' });
+  try {
+    await ai.streamChatCompletion(
+      { provider, model, systemPrompt: effectiveSystemPrompt, messages: [...historyMessages, { role: 'user', content: message }] },
+      delta => res.write(JSON.stringify({ delta }) + '\n')
+    );
+    res.write(JSON.stringify({ done: true }) + '\n');
+  } catch (e) {
+    console.error('Chat completion failed:', e.message);
+    res.write(JSON.stringify({ error: 'The AI provider request failed. Please try again.' }) + '\n');
+  }
+  res.end();
+});
+
+app.get('/api/prompt-templates', requireAuth, (req, res) => {
+  res.json({ templates: db.listPromptTemplates(req.user.id) });
+});
+
+app.post('/api/prompt-templates', requireAuth, (req, res) => {
+  const { name, systemPrompt } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Template name is required.' });
+  if (!systemPrompt || !systemPrompt.trim()) return res.status(400).json({ error: 'System prompt is required.' });
+  const template = db.createPromptTemplate(req.user.id, {
+    name: name.trim().slice(0, 60),
+    systemPrompt: systemPrompt.trim().slice(0, 4000)
+  });
+  res.json({ template });
+});
+
+app.patch('/api/prompt-templates/:id', requireAuth, (req, res) => {
+  const { name, systemPrompt } = req.body || {};
+  const patch = {};
+  if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 60);
+  if (typeof systemPrompt === 'string' && systemPrompt.trim()) patch.systemPrompt = systemPrompt.trim().slice(0, 4000);
+  const ok = db.updatePromptTemplate(req.user.id, req.params.id, patch);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/prompt-templates/:id', requireAuth, (req, res) => {
+  const ok = db.deletePromptTemplate(req.user.id, req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+function toKnowledgeResponse(record) {
+  return { id: record.id, title: record.title, content: record.content, createdAt: record.createdAt, updatedAt: record.updatedAt };
+}
+
+app.get('/api/knowledge', requireAuth, (req, res) => {
+  res.json({ knowledge: db.listKnowledge(req.user.id).map(toKnowledgeResponse) });
+});
+
+app.post('/api/knowledge', requireAuth, async (req, res) => {
+  const { title, content } = req.body || {};
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required.' });
+  if (!content || !content.trim()) return res.status(400).json({ error: 'Content is required.' });
+  const entry = { title: title.trim().slice(0, 120), content: content.trim().slice(0, 50000) };
+  if (isEmbeddingConfigured()) {
+    try {
+      entry.chunks = await embedChunksForFile(entry.content);
+    } catch (e) {
+      console.error('Embedding knowledge entry failed, falling back to no embeddings for this entry:', e.message);
+    }
+  }
+  const record = db.createKnowledgeEntry(req.user.id, entry);
+  if (!record) return res.status(404).json({ error: 'User not found' });
+  res.json({ knowledge: toKnowledgeResponse(record) });
+});
+
+app.put('/api/knowledge/:id', requireAuth, async (req, res) => {
+  const { title, content } = req.body || {};
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required.' });
+  if (!content || !content.trim()) return res.status(400).json({ error: 'Content is required.' });
+  const patch = { title: title.trim().slice(0, 120), content: content.trim().slice(0, 50000) };
+  if (isEmbeddingConfigured()) {
+    try {
+      patch.chunks = await embedChunksForFile(patch.content);
+    } catch (e) {
+      console.error('Embedding knowledge entry failed, keeping previous embeddings for this entry:', e.message);
+    }
+  }
+  const record = db.updateKnowledgeEntry(req.user.id, req.params.id, patch);
+  if (!record) return res.status(404).json({ error: 'Not found' });
+  res.json({ knowledge: toKnowledgeResponse(record) });
+});
+
+app.delete('/api/knowledge/:id', requireAuth, (req, res) => {
+  const ok = db.deleteKnowledgeEntry(req.user.id, req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password || username.length < 3 || password.length < 6) {
@@ -285,11 +444,15 @@ app.get('/api/profile', requireAuth, (req, res) => {
 });
 
 app.put('/api/profile', requireAuth, (req, res) => {
-  const { displayName, avatar, theme } = req.body || {};
+  const { displayName, avatar, theme, defaultProvider, defaultModel, defaultSystemPrompt } = req.body || {};
   const patch = {};
   if (typeof displayName === 'string' && displayName.trim()) patch.displayName = displayName.trim().slice(0, 40);
   if (typeof avatar === 'string') patch.avatar = avatar.slice(0, 8);
   if (theme === 'light' || theme === 'dark') patch.theme = theme;
+  if (defaultProvider === null || typeof defaultProvider === 'string') patch.defaultProvider = defaultProvider;
+  if (defaultModel === null || typeof defaultModel === 'string') patch.defaultModel = defaultModel;
+  if (defaultSystemPrompt === null) patch.defaultSystemPrompt = null;
+  else if (typeof defaultSystemPrompt === 'string') patch.defaultSystemPrompt = defaultSystemPrompt.slice(0, 4000);
   const profile = db.updateProfile(req.user.id, patch);
   if (!profile) return res.status(404).json({ error: 'User not found' });
   res.json(profile);
@@ -362,8 +525,20 @@ app.get('/api/conversations/:id', requireAuth, (req, res) => {
 });
 
 app.put('/api/conversations/:id', requireAuth, (req, res) => {
-  const { history, userName, notes } = req.body || {};
-  const ok = db.saveConversation(req.user.id, req.params.id, { history, userName, notes });
+  const { history, userName, notes, provider, model, systemPrompt } = req.body || {};
+  // Only include keys the caller actually sent — this endpoint now has two
+  // callers (full-history saves and AI-settings-only saves), and Object.assign
+  // in db.saveConversation would clobber an omitted field to undefined if it
+  // were always included here regardless of presence.
+  const patch = {};
+  if (Array.isArray(history)) patch.history = history;
+  if (userName === null || typeof userName === 'string') patch.userName = userName;
+  if (Array.isArray(notes)) patch.notes = notes;
+  if (provider === null || typeof provider === 'string') patch.provider = provider;
+  if (model === null || typeof model === 'string') patch.model = model;
+  if (systemPrompt === null) patch.systemPrompt = null;
+  else if (typeof systemPrompt === 'string') patch.systemPrompt = systemPrompt.slice(0, 4000);
+  const ok = db.saveConversation(req.user.id, req.params.id, patch);
   if (!ok) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
 });

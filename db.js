@@ -31,6 +31,8 @@ function migrateUser(user) {
     changed = true;
   }
   if (!user.files) { user.files = []; changed = true; }
+  if (!user.promptTemplates) { user.promptTemplates = []; changed = true; }
+  if (!user.knowledge) { user.knowledge = []; changed = true; }
 
   return changed;
 }
@@ -74,7 +76,10 @@ function createUser(username, passwordHash) {
     profile: {
       displayName: username,
       avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)],
-      theme: 'light'
+      theme: 'light',
+      defaultProvider: null,
+      defaultModel: null,
+      defaultSystemPrompt: null
     },
     folders: [],
     conversations: [
@@ -85,11 +90,16 @@ function createUser(username, passwordHash) {
         history: [],
         userName: null,
         notes: [],
+        provider: null,
+        model: null,
+        systemPrompt: null,
         createdAt: now,
         updatedAt: now
       }
     ],
-    files: []
+    files: [],
+    promptTemplates: [],
+    knowledge: []
   };
   db.users.push(user);
   save(db);
@@ -179,6 +189,9 @@ function createConversation(userId, title) {
     history: [],
     userName: null,
     notes: [],
+    provider: null,
+    model: null,
+    systemPrompt: null,
     createdAt: now,
     updatedAt: now
   };
@@ -227,10 +240,94 @@ function getFile(userId, fileId) {
   return listFiles(userId).find(f => f.id === fileId) || null;
 }
 
+function listPromptTemplates(userId) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  return user && Array.isArray(user.promptTemplates) ? user.promptTemplates : [];
+}
+
+function createPromptTemplate(userId, { name, systemPrompt }) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return null;
+  if (!Array.isArray(user.promptTemplates)) user.promptTemplates = [];
+  const template = { id: crypto.randomUUID(), name, systemPrompt, createdAt: new Date().toISOString() };
+  user.promptTemplates.push(template);
+  save(db);
+  return template;
+}
+
+function updatePromptTemplate(userId, templateId, patch) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  const template = user && (user.promptTemplates || []).find(t => t.id === templateId);
+  if (!template) return false;
+  Object.assign(template, patch);
+  save(db);
+  return true;
+}
+
+function deletePromptTemplate(userId, templateId) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return false;
+  const before = (user.promptTemplates || []).length;
+  user.promptTemplates = (user.promptTemplates || []).filter(t => t.id !== templateId);
+  save(db);
+  return user.promptTemplates.length < before;
+}
+
+function listKnowledge(userId) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  return user && Array.isArray(user.knowledge) ? user.knowledge : [];
+}
+
+function createKnowledgeEntry(userId, entry) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return null;
+  if (!Array.isArray(user.knowledge)) user.knowledge = [];
+  const now = new Date().toISOString();
+  const record = {
+    id: crypto.randomUUID(),
+    title: entry.title,
+    content: entry.content,
+    chunks: entry.chunks || [],
+    createdAt: now,
+    updatedAt: now
+  };
+  user.knowledge.push(record);
+  save(db);
+  return record;
+}
+
+function updateKnowledgeEntry(userId, entryId, patch) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  const entry = user && (user.knowledge || []).find(k => k.id === entryId);
+  if (!entry) return null;
+  Object.assign(entry, patch, { updatedAt: new Date().toISOString() });
+  save(db);
+  return entry;
+}
+
+function deleteKnowledgeEntry(userId, entryId) {
+  const db = load();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return false;
+  const before = (user.knowledge || []).length;
+  user.knowledge = (user.knowledge || []).filter(k => k.id !== entryId);
+  save(db);
+  return user.knowledge.length < before;
+}
+
 module.exports = {
   findUserByUsername, findUserById, createUser, updatePassword,
   getProfile, updateProfile,
   listFolders, createFolder, renameFolder, deleteFolder,
   listConversations, getConversation, createConversation, saveConversation, deleteConversation,
-  addFile, listFiles, getFile
+  addFile, listFiles, getFile,
+  listPromptTemplates, createPromptTemplate, updatePromptTemplate, deletePromptTemplate,
+  listKnowledge, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry
 };
