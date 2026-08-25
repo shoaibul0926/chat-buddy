@@ -592,9 +592,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong on the server.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Chat Buddy server running at http://localhost:${PORT}`);
-});
+// Guarded so `require('./server')` (route tests) gets `app` without also
+// binding a port or kicking off slow model downloads — only `node server.js`
+// / `npm start` (require.main === module) does that.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Chat Buddy server running at http://localhost:${PORT}`);
+  });
 
-getCocoModel().then(() => console.log('Object detection model ready')).catch(e => console.error('Model preload failed', e));
-getTesseractWorker().then(() => console.log('OCR worker ready')).catch(e => console.error('OCR worker preload failed', e));
+  getCocoModel().then(() => console.log('Object detection model ready')).catch(e => console.error('Model preload failed', e));
+  getTesseractWorker().then(() => console.log('OCR worker ready')).catch(e => console.error('OCR worker preload failed', e));
+}
+
+module.exports = app;
