@@ -1930,7 +1930,7 @@
   };
 
   function looksLikeQuestion(text) {
-    return /\?\s*$/.test(text.trim()) || /^(what|who|when|where|why|how|does|is|tell me|summarize|explain)\b/i.test(text.trim());
+    return /\?\s*$/.test(text.trim()) || /^(what'?s|who'?s|when'?s|where'?s|why'?s|how'?s|what|who|when|where|why|how|does|is|tell me|summarize|explain)\b/i.test(text.trim());
   }
 
   // Broader than looksLikeQuestion: catches generic "tell me about it"-style
