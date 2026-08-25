@@ -57,15 +57,19 @@ async function deleteBySource(userId, sourceType, sourceId) {
 const DEFAULT_THRESHOLD = 0.5;
 
 // Top-K semantic search across one user's chunks, optionally scoped to a
-// single sourceType. Returns the same {sourceLabel, text, score} shape the
-// old brute-force semanticSearchChunks used, so callers didn't need to
-// change their result-handling code when this replaced it.
+// single sourceType or excluding a list of them (e.g. memory categories that
+// are injected into the system prompt unconditionally elsewhere and would
+// otherwise risk being surfaced twice by an unscoped relevance search).
+// Returns the same {sourceLabel, text, score} shape the old brute-force
+// semanticSearchChunks used, so callers didn't need to change their
+// result-handling code when this replaced it.
 async function queryTopK(userId, queryVector, topK, opts = {}) {
   await ensureIndex();
-  const { sourceType, threshold = DEFAULT_THRESHOLD } = opts;
-  const filter = sourceType
-    ? { $and: [{ userId: { $eq: userId } }, { sourceType: { $eq: sourceType } }] }
-    : { userId: { $eq: userId } };
+  const { sourceType, excludeSourceTypes, threshold = DEFAULT_THRESHOLD } = opts;
+  const clauses = [{ userId: { $eq: userId } }];
+  if (sourceType) clauses.push({ sourceType: { $eq: sourceType } });
+  if (excludeSourceTypes && excludeSourceTypes.length) clauses.push({ sourceType: { $nin: excludeSourceTypes } });
+  const filter = clauses.length > 1 ? { $and: clauses } : clauses[0];
   const results = await index.queryItems(queryVector, '', topK, filter);
   return results
     .filter(r => r.score >= threshold)

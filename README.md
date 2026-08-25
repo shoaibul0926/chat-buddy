@@ -2,7 +2,7 @@
 
 **Live: https://chat-buddy-production.up.railway.app**
 
-A chatbot with rule-based chat (or real streaming LLM chat via Anthropic/OpenAI, if configured), AI image generation/editing (OpenAI, if configured), an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), a personal knowledge base with RAG over a real local vector index, and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
+A chatbot with rule-based chat (or real streaming LLM chat via Anthropic/OpenAI, if configured), AI image generation/editing (OpenAI, if configured), an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), a personal knowledge base with RAG over a real local vector index, automatic cross-conversation memory, and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
 
 ## What changed: real authentication
 
@@ -75,6 +75,9 @@ data.json       Created automatically on first run (git-ignored)
 | `POST /api/images/:fileId/remove-background` | Bearer token | — | removes the background, saved as a new file |
 | `POST /api/images/:fileId/style-transfer` | Bearer token | `{ stylePrompt }` | redraws the image in a described style, saved as a new file |
 | `POST /api/images/:fileId/enhance` | Bearer token | — | AI-enhanced re-render (not a lossless upscale), saved as a new file |
+| `GET /api/memories?category=&q=` | Bearer token | — | lists/filters/searches the user's automatically-remembered facts |
+| `PATCH /api/memories/:id` | Bearer token | `{ content?, enabled? }` | edits a memory's content or turns it off |
+| `DELETE /api/memories/:id` | Bearer token | — | deletes a memory |
 
 ## Phase 1: Document & File Intelligence
 
@@ -132,6 +135,16 @@ The first batch of a larger "content creation, not just analysis" phase — full
 - **Background removal, style transfer, image enhancement**: `POST /api/images/:fileId/remove-background|style-transfer|enhance` — none of these are separate OpenAI API features; each is a templated call to the same edit endpoint (`background: transparent` for removal, low `input_fidelity` for style transfer, high `input_fidelity`/`quality` for enhancement). Enhancement in particular is a generative re-render, not a deterministic pixel-preserving upscale — presented as such in the UI.
 - Every result is saved as a normal entry in the same file library `POST /api/files` populates — preview, download, and (if `VOYAGE_API_KEY` is set) embedding/RAG all work on generated images automatically, no separate storage system.
 - Each action is a real, billed OpenAI request (`n` is hardcoded to `1` everywhere to avoid accidental multi-image cost from one click) — the Generate button and per-image action row are hidden entirely when `OPENAI_API_KEY` isn't configured, rather than showing controls that would just fail.
+
+## Phase A2: Memory System
+
+Chat Buddy automatically remembers durable facts about you across *all* conversations, not just within one chat's own history — a name mentioned in one chat surfaces in a completely different one later.
+
+- **Automatic extraction**: after every AI chat reply, a background call (never awaited by the response the user is waiting on, and always the cheapest model in whichever provider is configured — extraction runs on every exchange, so it must not double the cost of a possibly-expensive chat model) asks the model to pull out durable facts worth remembering, categorized as **user** (who you are), **project** (what you're working on), **preference** (how you want things done), or **conversation** (notable context from that exchange).
+- **Deduplication**: when `VOYAGE_API_KEY` is set, a new candidate is embedded and checked against existing memories in the same category via the same vector index Knowledge/Files use (`sourceType: memory:<category>`) — a near-duplicate is skipped rather than saved again. Without it, dedup is skipped and candidates are saved as-is (same degradation shape as everywhere else this app uses Voyage).
+- **Retrieval, split by type**: `user`/`preference` memories are always included in full in the system prompt (stable identity/preference facts aren't "relevant" to any one message — they're relevant to all of them). `project`/`conversation` memories are relevance-searched like Knowledge/Files, so only what's contextually relevant to the current message is pulled in.
+- **Search, edit, delete, and permissions**: a "🧠 Memory" panel lists everything remembered, filterable by category and searchable, with inline edit, an on/off toggle per memory, and two-click-confirm delete. A "Memory" section in Settings has a master "Remember things automatically" switch plus a per-category toggle — this *is* the permissions model: your own consent over what gets captured, not a multi-user ACL (chat-buddy has no memory-sharing between accounts).
+- Extraction only ever runs when a chat reply actually completed, is fully silent (never interrupts the conversation to ask "should I remember this?", matching how real memory features behave), and a failure anywhere in the pipeline is caught and logged — it can never affect the chat reply itself, which has already been sent by the time extraction runs.
 
 ## Deploying
 

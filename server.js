@@ -15,6 +15,7 @@ const { extractText, findAnswer, embedChunksForFile, embedTexts, isEmbeddingConf
 const ai = require('./ai');
 const vectorStore = require('./vectorStore');
 const imageGen = require('./imageGen');
+const memoryExtractor = require('./memoryExtractor');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
@@ -438,22 +439,46 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
   const conversation = conversationId ? db.getConversation(req.user.id, conversationId) : null;
   const historyMessages = buildMessagesFromHistory(conversation ? conversation.history : [], 20);
+  const profile = db.getProfile(req.user.id) || {};
 
-  // RAG: ground the answer in the user's knowledge base + uploaded files
-  // when embeddings are available. No-ops gracefully otherwise (no
-  // VOYAGE_API_KEY, nothing embedded yet, or the embedding call fails) — the
-  // LLM just answers from conversation history alone, same degradation
-  // philosophy as the rest of this codebase's Voyage integration.
   let effectiveSystemPrompt = typeof systemPrompt === 'string' ? systemPrompt : '';
+
+  // Memory, part 1: user/preference facts are always included in full — no
+  // similarity search — since they're meant to be stable identity/preference
+  // context that should be present regardless of what the current message is
+  // about (a name or a tone preference isn't "relevant" to any one message,
+  // it's relevant to all of them).
+  const alwaysOnMemories = db.listMemories(req.user.id)
+    .filter(m => m.enabled && (m.category === 'user' || m.category === 'preference'))
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, memoryExtractor.MAX_MEMORIES_IN_PROMPT);
+  if (alwaysOnMemories.length) {
+    const memoryBlock = alwaysOnMemories.map(m => `- (${m.category}) ${m.content}`).join('\n');
+    effectiveSystemPrompt = (effectiveSystemPrompt ? effectiveSystemPrompt + '\n\n' : '') +
+      `What you know about the user:\n${memoryBlock}`;
+  }
+
+  // RAG: ground the answer in the user's knowledge base, uploaded files, and
+  // project/conversation memories when embeddings are available. No-ops
+  // gracefully otherwise (no VOYAGE_API_KEY, nothing embedded yet, or the
+  // embedding call fails) — the LLM just answers from conversation history
+  // (+ the always-on memory block above) alone, same degradation philosophy
+  // as the rest of this codebase's Voyage integration. memory:user/
+  // memory:preference are excluded here since they're already included in
+  // full above — an unscoped search would otherwise risk surfacing the same
+  // fact twice.
+  let messageEmbedding = null;
   if (isEmbeddingConfigured()) {
     try {
       if (await vectorStore.hasAny(req.user.id)) {
-        const [messageEmbedding] = await embedTexts([message], 'query');
-        const results = await vectorStore.queryTopK(req.user.id, messageEmbedding, 5);
+        [messageEmbedding] = await embedTexts([message], 'query');
+        const results = await vectorStore.queryTopK(req.user.id, messageEmbedding, 5, {
+          excludeSourceTypes: ['memory:user', 'memory:preference']
+        });
         if (results.length) {
           const context = results.map(r => `[${r.sourceLabel}]\n${r.text}`).join('\n\n');
           effectiveSystemPrompt = (effectiveSystemPrompt ? effectiveSystemPrompt + '\n\n' : '') +
-            `Relevant information from the user's knowledge base and files:\n\n${context}`;
+            `Relevant information from the user's knowledge base, files, and memory:\n\n${context}`;
         }
       }
     } catch (e) {
@@ -467,10 +492,11 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   // fetch()'s streaming body instead — no need for the text/event-stream
   // protocol at all.
   res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' });
+  let fullReplyText = '';
   try {
     await ai.streamChatCompletion(
       { provider, model, systemPrompt: effectiveSystemPrompt, messages: [...historyMessages, { role: 'user', content: message }] },
-      delta => res.write(JSON.stringify({ delta }) + '\n')
+      delta => { fullReplyText += delta; res.write(JSON.stringify({ delta }) + '\n'); }
     );
     res.write(JSON.stringify({ done: true }) + '\n');
   } catch (e) {
@@ -478,6 +504,20 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     res.write(JSON.stringify({ error: 'The AI provider request failed. Please try again.' }) + '\n');
   }
   res.end();
+
+  // Memory, part 2: fire-and-forget extraction — runs after the response has
+  // already been fully sent, so a slow or failed extraction call can never
+  // delay or affect the chat reply the user is actually waiting on.
+  if (fullReplyText && profile.memoryEnabled !== false) {
+    const categories = profile.memoryCategories || {};
+    const allowedCategories = memoryExtractor.CATEGORIES.filter(c => categories[c] !== false);
+    if (allowedCategories.length) {
+      memoryExtractor
+        .extractMemories({ userId: req.user.id, provider, userMessage: message, assistantReply: fullReplyText, allowedCategories })
+        .then(candidates => candidates.length && memoryExtractor.saveExtractedMemories({ userId: req.user.id, conversationId, candidates }))
+        .catch(e => console.error('Memory extraction/save failed:', e.message));
+    }
+  }
 });
 
 app.get('/api/prompt-templates', requireAuth, (req, res) => {
@@ -577,6 +617,43 @@ app.delete('/api/knowledge/:id', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/memories', requireAuth, (req, res) => {
+  const { category, q } = req.query || {};
+  let memories = db.listMemories(req.user.id);
+  if (category && memoryExtractor.CATEGORIES.includes(category)) {
+    memories = memories.filter(m => m.category === category);
+  }
+  if (q && q.trim()) {
+    const needle = q.trim().toLowerCase();
+    memories = memories.filter(m => m.content.toLowerCase().includes(needle));
+  }
+  memories = memories.slice().sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  res.json({ memories });
+});
+
+app.patch('/api/memories/:id', requireAuth, (req, res) => {
+  const { content, enabled } = req.body || {};
+  const patch = {};
+  if (typeof content === 'string' && content.trim()) patch.content = content.trim().slice(0, 500);
+  if (typeof enabled === 'boolean') patch.enabled = enabled;
+  const memory = db.updateMemory(req.user.id, req.params.id, patch);
+  if (!memory) return res.status(404).json({ error: 'Not found' });
+  res.json({ memory });
+});
+
+app.delete('/api/memories/:id', requireAuth, async (req, res) => {
+  const memory = db.deleteMemory(req.user.id, req.params.id);
+  if (!memory) return res.status(404).json({ error: 'Not found' });
+  if (isEmbeddingConfigured()) {
+    try {
+      await vectorStore.deleteBySource(req.user.id, 'memory:' + memory.category, memory.id);
+    } catch (e) {
+      console.error('Failed to clean up vector index for a deleted memory:', e.message);
+    }
+  }
+  res.json({ ok: true });
+});
+
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password || username.length < 3 || password.length < 6) {
@@ -607,7 +684,10 @@ app.get('/api/profile', requireAuth, (req, res) => {
 });
 
 app.put('/api/profile', requireAuth, (req, res) => {
-  const { displayName, avatar, theme, defaultProvider, defaultModel, defaultSystemPrompt } = req.body || {};
+  const {
+    displayName, avatar, theme, defaultProvider, defaultModel, defaultSystemPrompt,
+    memoryEnabled, memoryCategories
+  } = req.body || {};
   const patch = {};
   if (typeof displayName === 'string' && displayName.trim()) patch.displayName = displayName.trim().slice(0, 40);
   if (typeof avatar === 'string') patch.avatar = avatar.slice(0, 8);
@@ -616,6 +696,18 @@ app.put('/api/profile', requireAuth, (req, res) => {
   if (defaultModel === null || typeof defaultModel === 'string') patch.defaultModel = defaultModel;
   if (defaultSystemPrompt === null) patch.defaultSystemPrompt = null;
   else if (typeof defaultSystemPrompt === 'string') patch.defaultSystemPrompt = defaultSystemPrompt.slice(0, 4000);
+  if (typeof memoryEnabled === 'boolean') patch.memoryEnabled = memoryEnabled;
+  if (memoryCategories && typeof memoryCategories === 'object') {
+    // updateProfile spreads `patch` over the existing profile shallowly, so a
+    // partial memoryCategories object here would silently drop any category
+    // key not included in this request — merge over the current value first.
+    const current = db.getProfile(req.user.id);
+    const merged = { ...(current && current.memoryCategories) };
+    for (const cat of memoryExtractor.CATEGORIES) {
+      if (typeof memoryCategories[cat] === 'boolean') merged[cat] = memoryCategories[cat];
+    }
+    patch.memoryCategories = merged;
+  }
   const profile = db.updateProfile(req.user.id, patch);
   if (!profile) return res.status(404).json({ error: 'User not found' });
   res.json(profile);

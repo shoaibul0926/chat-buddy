@@ -57,6 +57,16 @@ test('queryTopK: sourceType filter scopes results to just files or just knowledg
   assert.deepEqual(knowledgeOnly.map(r => r.text), ['knowledge chunk']);
 });
 
+test('queryTopK: excludeSourceTypes filters out unwanted source types from an otherwise-unscoped search', async () => {
+  const userId = 'user-excluded';
+  await vectorStore.upsertChunks(userId, 'file', 'f1', 'f1.pdf', [{ text: 'file chunk', embedding: [1, 0] }]);
+  await vectorStore.upsertChunks(userId, 'memory:user', 'm1', 'user memory', [{ text: 'always-on memory chunk', embedding: [1, 0] }]);
+  await vectorStore.upsertChunks(userId, 'memory:project', 'm2', 'project memory', [{ text: 'project memory chunk', embedding: [1, 0] }]);
+
+  const results = await vectorStore.queryTopK(userId, [1, 0], 10, { excludeSourceTypes: ['memory:user', 'memory:preference'] });
+  assert.deepEqual(results.map(r => r.text).sort(), ['file chunk', 'project memory chunk']);
+});
+
 test('queryTopK: threshold excludes low-similarity matches', async () => {
   const userId = 'user-threshold';
   await vectorStore.upsertChunks(userId, 'file', 'low-sim', 'low.pdf', [{ text: 'barely related', embedding: [0.1, 1] }]);
