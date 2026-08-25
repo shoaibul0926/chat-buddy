@@ -11,7 +11,7 @@
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const ANTHROPIC_VERSION = '2023-06-01';
-const MAX_TOKENS = 1024;
+const MAX_TOKENS = 4096;
 
 const PROVIDERS = {
   anthropic: {
@@ -19,7 +19,7 @@ const PROVIDERS = {
     label: 'Anthropic',
     models: [
       { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
-      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' }
+      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
     ]
   },
   openai: {
