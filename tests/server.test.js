@@ -19,7 +19,6 @@ delete process.env.OPENAI_API_KEY;
 delete process.env.VOYAGE_API_KEY;
 
 const app = require('../server');
-const db = require('../db'); // same TEST_DATA_DIR, same module cache as app — used to seed memories directly, since there's no manual "create memory" route (memories are only ever created by the extraction pipeline)
 
 let server;
 let baseUrl;
@@ -464,86 +463,4 @@ test('images/:fileId/edit requires a prompt, images/:fileId/style-transfer requi
   });
   assert.equal(noStylePrompt.status, 400);
   assert.match((await noStylePrompt.json()).error, /style description is required/);
-});
-
-// ---------- Memory (Phase A2) ----------
-
-test('profile: PUT saves memoryEnabled and merges memoryCategories without dropping other keys', async () => {
-  const { data: { token } } = await registerUser(uniqueUsername('ruth'));
-
-  await fetch(`${baseUrl}/api/profile`, {
-    method: 'PUT', headers: authHeaders(token, true),
-    body: JSON.stringify({ memoryEnabled: false, memoryCategories: { project: false } })
-  });
-  const after1 = await (await fetch(`${baseUrl}/api/profile`, { headers: authHeaders(token) })).json();
-  assert.equal(after1.memoryEnabled, false);
-  assert.equal(after1.memoryCategories.project, false);
-  assert.equal(after1.memoryCategories.user, true, 'unrelated categories must survive a partial update');
-
-  await fetch(`${baseUrl}/api/profile`, {
-    method: 'PUT', headers: authHeaders(token, true),
-    body: JSON.stringify({ memoryCategories: { preference: false } })
-  });
-  const after2 = await (await fetch(`${baseUrl}/api/profile`, { headers: authHeaders(token) })).json();
-  assert.equal(after2.memoryCategories.project, false, 'the earlier partial update must still be in effect');
-  assert.equal(after2.memoryCategories.preference, false);
-});
-
-test('memories: GET lists/filters/searches, PATCH edits content and enabled, DELETE removes', async () => {
-  const username = uniqueUsername('sara');
-  const { data: { token } } = await registerUser(username);
-  const userId = db.findUserByUsername(username).id;
-
-  const m1 = db.createMemory(userId, { category: 'user', content: 'The user\'s name is Sara' });
-  const m2 = db.createMemory(userId, { category: 'project', content: 'Building a recipe app' });
-
-  const all = await (await fetch(`${baseUrl}/api/memories`, { headers: authHeaders(token) })).json();
-  assert.equal(all.memories.length, 2);
-
-  const byCategory = await (await fetch(`${baseUrl}/api/memories?category=project`, { headers: authHeaders(token) })).json();
-  assert.deepEqual(byCategory.memories.map(m => m.id), [m2.id]);
-
-  const bySearch = await (await fetch(`${baseUrl}/api/memories?q=sara`, { headers: authHeaders(token) })).json();
-  assert.deepEqual(bySearch.memories.map(m => m.id), [m1.id]);
-
-  const patched = await (await fetch(`${baseUrl}/api/memories/${m1.id}`, {
-    method: 'PATCH', headers: authHeaders(token, true), body: JSON.stringify({ enabled: false })
-  })).json();
-  assert.equal(patched.memory.enabled, false);
-  assert.equal(patched.memory.content, m1.content, 'content must be unchanged when only enabled was patched');
-
-  const del = await fetch(`${baseUrl}/api/memories/${m2.id}`, { method: 'DELETE', headers: authHeaders(token) });
-  assert.equal(del.status, 200);
-  const afterDelete = await (await fetch(`${baseUrl}/api/memories`, { headers: authHeaders(token) })).json();
-  assert.deepEqual(afterDelete.memories.map(m => m.id), [m1.id]);
-});
-
-test('memories: PATCH/DELETE on an unknown id returns 404', async () => {
-  const { data: { token } } = await registerUser(uniqueUsername('tariq'));
-  const patch = await fetch(`${baseUrl}/api/memories/does-not-exist`, {
-    method: 'PATCH', headers: authHeaders(token, true), body: JSON.stringify({ content: 'x' })
-  });
-  assert.equal(patch.status, 404);
-  const del = await fetch(`${baseUrl}/api/memories/does-not-exist`, { method: 'DELETE', headers: authHeaders(token) });
-  assert.equal(del.status, 404);
-});
-
-test('chat: with memoryEnabled off, a chat exchange does not create any memory (no key configured, so this only exercises routing/gating)', async () => {
-  const username = uniqueUsername('uma');
-  const { data: { token } } = await registerUser(username);
-  const userId = db.findUserByUsername(username).id;
-
-  await fetch(`${baseUrl}/api/profile`, {
-    method: 'PUT', headers: authHeaders(token, true), body: JSON.stringify({ memoryEnabled: false })
-  });
-
-  // No provider configured in this test env, so this 400s before ever
-  // reaching the streaming/extraction code — this test only confirms the
-  // route doesn't crash with the new memory-related code added to it.
-  const res = await fetch(`${baseUrl}/api/chat`, {
-    method: 'POST', headers: authHeaders(token, true),
-    body: JSON.stringify({ message: 'hi', provider: 'anthropic', model: 'claude-sonnet-5' })
-  });
-  assert.equal(res.status, 400);
-  assert.equal(db.listMemories(userId).length, 0);
 });

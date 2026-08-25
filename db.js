@@ -33,12 +33,6 @@ function migrateUser(user) {
   if (!user.files) { user.files = []; changed = true; }
   if (!user.promptTemplates) { user.promptTemplates = []; changed = true; }
   if (!user.knowledge) { user.knowledge = []; changed = true; }
-  if (!user.memories) { user.memories = []; changed = true; }
-  if (user.profile && user.profile.memoryEnabled === undefined) {
-    user.profile.memoryEnabled = true;
-    user.profile.memoryCategories = { user: true, project: true, preference: true, conversation: true };
-    changed = true;
-  }
 
   return changed;
 }
@@ -85,9 +79,7 @@ function createUser(username, passwordHash) {
       theme: 'light',
       defaultProvider: null,
       defaultModel: null,
-      defaultSystemPrompt: null,
-      memoryEnabled: true,
-      memoryCategories: { user: true, project: true, preference: true, conversation: true }
+      defaultSystemPrompt: null
     },
     folders: [],
     conversations: [
@@ -107,8 +99,7 @@ function createUser(username, passwordHash) {
     ],
     files: [],
     promptTemplates: [],
-    knowledge: [],
-    memories: []
+    knowledge: []
   };
   db.users.push(user);
   save(db);
@@ -330,53 +321,6 @@ function deleteKnowledgeEntry(userId, entryId) {
   return user.knowledge.length < before;
 }
 
-function listMemories(userId) {
-  const db = load();
-  const user = db.users.find(u => u.id === userId);
-  return user && Array.isArray(user.memories) ? user.memories : [];
-}
-
-function createMemory(userId, { category, content, sourceConversationId }) {
-  const db = load();
-  const user = db.users.find(u => u.id === userId);
-  if (!user) return null;
-  if (!Array.isArray(user.memories)) user.memories = [];
-  const now = new Date().toISOString();
-  const record = {
-    id: crypto.randomUUID(),
-    category,
-    content,
-    enabled: true,
-    sourceConversationId: sourceConversationId || null,
-    createdAt: now,
-    updatedAt: now
-  };
-  user.memories.push(record);
-  save(db);
-  return record;
-}
-
-function updateMemory(userId, memoryId, patch) {
-  const db = load();
-  const user = db.users.find(u => u.id === userId);
-  const memory = user && (user.memories || []).find(m => m.id === memoryId);
-  if (!memory) return null;
-  Object.assign(memory, patch, { updatedAt: new Date().toISOString() });
-  save(db);
-  return memory;
-}
-
-function deleteMemory(userId, memoryId) {
-  const db = load();
-  const user = db.users.find(u => u.id === userId);
-  if (!user) return null;
-  const memory = (user.memories || []).find(m => m.id === memoryId);
-  if (!memory) return null;
-  user.memories = user.memories.filter(m => m.id !== memoryId);
-  save(db);
-  return memory;
-}
-
 module.exports = {
   findUserByUsername, findUserById, createUser, updatePassword,
   getProfile, updateProfile,
@@ -384,6 +328,5 @@ module.exports = {
   listConversations, getConversation, createConversation, saveConversation, deleteConversation,
   addFile, listFiles, getFile,
   listPromptTemplates, createPromptTemplate, updatePromptTemplate, deletePromptTemplate,
-  listKnowledge, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry,
-  listMemories, createMemory, updateMemory, deleteMemory
+  listKnowledge, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry
 };

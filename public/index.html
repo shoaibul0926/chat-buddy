@@ -297,7 +297,7 @@
   }
   #newFolderBtn:hover { color: var(--accent); }
 
-  #knowledgeBtn, #memoryBtn {
+  #knowledgeBtn {
     width: 100%;
     background: var(--bg-secondary);
     color: var(--text);
@@ -308,7 +308,7 @@
     cursor: pointer;
     margin-bottom: 8px;
   }
-  #knowledgeBtn:hover, #memoryBtn:hover { background: var(--sidebar-hover); }
+  #knowledgeBtn:hover { background: var(--sidebar-hover); }
 
   #newFolderInput {
     width: 100%;
@@ -972,7 +972,7 @@
 
   /* ---------- Knowledge base overlay ---------- */
 
-  #knowledgeOverlay, #generateImageOverlay, #imageActionOverlay, #memoryOverlay {
+  #knowledgeOverlay, #generateImageOverlay, #imageActionOverlay {
     position: absolute;
     inset: 0;
     background: rgba(0,0,0,0.4);
@@ -983,9 +983,9 @@
     padding: 16px;
   }
 
-  #knowledgeOverlay.open, #generateImageOverlay.open, #imageActionOverlay.open, #memoryOverlay.open { display: flex; }
+  #knowledgeOverlay.open, #generateImageOverlay.open, #imageActionOverlay.open { display: flex; }
 
-  #knowledgeCard, #generateImageCard, #imageActionCard, #memoryCard {
+  #knowledgeCard, #generateImageCard, #imageActionCard {
     background: var(--bg);
     color: var(--text);
     border-radius: 12px;
@@ -996,7 +996,7 @@
     padding: 18px;
   }
 
-  #knowledgeCard h3, #generateImageCard h3, #imageActionCard h3, #memoryCard h3 {
+  #knowledgeCard h3, #generateImageCard h3, #imageActionCard h3 {
     margin: 0 0 12px;
     color: var(--accent);
     display: flex;
@@ -1004,59 +1004,12 @@
     align-items: center;
   }
 
-  #closeKnowledgeBtn, #closeGenerateImageBtn, #closeImageActionBtn, #closeMemoryBtn {
+  #closeKnowledgeBtn, #closeGenerateImageBtn, #closeImageActionBtn {
     background: none;
     border: none;
     font-size: 18px;
     cursor: pointer;
     color: var(--text-secondary);
-  }
-
-  .memory-item {
-    padding: 8px;
-    border-radius: 8px;
-    background: var(--bg-secondary);
-    margin-bottom: 8px;
-  }
-
-  .memory-item.disabled { opacity: 0.55; }
-
-  .memory-item-top {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
-  }
-
-  .memory-category-badge {
-    font-size: 10px;
-    font-weight: bold;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 8px;
-    background: var(--accent);
-    color: white;
-  }
-
-  .memory-item-content {
-    font-size: 12px;
-    white-space: pre-wrap;
-    margin-bottom: 6px;
-  }
-
-  .memory-item textarea {
-    width: 100%;
-    font-size: 12px;
-    margin-bottom: 6px;
-  }
-
-  .settings-check-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text);
-    margin-bottom: 6px;
   }
 
   .knowledge-item {
@@ -1103,7 +1056,6 @@
       <div id="sidebarBrand">🤖 Chat Buddy</div>
       <button id="newChatBtn">+ New Chat</button>
       <button id="knowledgeBtn">📚 Knowledge</button>
-      <button id="memoryBtn">🧠 Memory</button>
       <input id="sidebarSearch" type="text" placeholder="Search all chats..." autocomplete="off" />
     </div>
     <div id="searchResults"></div>
@@ -1182,19 +1134,6 @@
         <div class="settings-msg" id="aiSettingsMsg"></div>
 
         <div class="settings-section" style="margin-top:16px;">
-          <div class="settings-label">Memory</div>
-          <div class="settings-hint">When AI chat is enabled, Chat Buddy automatically extracts durable facts from your conversations (name, preferences, project context) and recalls them in future chats.</div>
-          <label class="settings-check-row"><input id="memoryEnabledCheckbox" type="checkbox" /> Remember things automatically</label>
-          <div class="settings-label" style="margin-top:4px;">What to remember</div>
-          <label class="settings-check-row"><input id="memoryCatUser" type="checkbox" /> About you (name, background)</label>
-          <label class="settings-check-row"><input id="memoryCatProject" type="checkbox" /> Projects you're working on</label>
-          <label class="settings-check-row"><input id="memoryCatPreference" type="checkbox" /> Preferences (tone, format)</label>
-          <label class="settings-check-row"><input id="memoryCatConversation" type="checkbox" /> Notable context from chats</label>
-        </div>
-        <button class="settings-btn" id="saveMemorySettingsBtn">Save memory settings</button>
-        <div class="settings-msg" id="memorySettingsMsg"></div>
-
-        <div class="settings-section" style="margin-top:16px;">
           <div class="settings-label">Change password</div>
           <input id="currentPasswordInput" type="password" placeholder="Current password" />
           <input id="newPasswordInput" type="password" placeholder="New password (6+ chars)" />
@@ -1253,25 +1192,6 @@
           <button class="settings-btn" id="imageActionSubmitBtn" type="button">Apply</button>
         </div>
         <div class="settings-msg" id="imageActionMsg"></div>
-      </div>
-    </div>
-
-    <div id="memoryOverlay">
-      <div id="memoryCard">
-        <h3>Memory <button id="closeMemoryBtn">✕</button></h3>
-        <div class="settings-hint">Facts Chat Buddy has automatically remembered about you. Turn any off, edit, or delete them here.</div>
-        <div class="settings-section">
-          <input id="memorySearchInput" type="text" placeholder="Search memories..." />
-          <select id="memoryCategoryFilter">
-            <option value="">All categories</option>
-            <option value="user">About you</option>
-            <option value="project">Projects</option>
-            <option value="preference">Preferences</option>
-            <option value="conversation">Conversation context</option>
-          </select>
-        </div>
-        <div class="settings-msg" id="memoryMsg"></div>
-        <div id="memoryList"></div>
       </div>
     </div>
 
@@ -1400,22 +1320,6 @@
   const cancelKnowledgeEditBtn = document.getElementById('cancelKnowledgeEditBtn');
   const knowledgeMsg = document.getElementById('knowledgeMsg');
   const knowledgeList = document.getElementById('knowledgeList');
-
-  const memoryEnabledCheckbox = document.getElementById('memoryEnabledCheckbox');
-  const memoryCatUser = document.getElementById('memoryCatUser');
-  const memoryCatProject = document.getElementById('memoryCatProject');
-  const memoryCatPreference = document.getElementById('memoryCatPreference');
-  const memoryCatConversation = document.getElementById('memoryCatConversation');
-  const saveMemorySettingsBtn = document.getElementById('saveMemorySettingsBtn');
-  const memorySettingsMsg = document.getElementById('memorySettingsMsg');
-
-  const memoryBtn = document.getElementById('memoryBtn');
-  const memoryOverlay = document.getElementById('memoryOverlay');
-  const closeMemoryBtn = document.getElementById('closeMemoryBtn');
-  const memorySearchInput = document.getElementById('memorySearchInput');
-  const memoryCategoryFilter = document.getElementById('memoryCategoryFilter');
-  const memoryMsg = document.getElementById('memoryMsg');
-  const memoryList = document.getElementById('memoryList');
 
   const generateImageBtn = document.getElementById('generateImageBtn');
   const generateImageOverlay = document.getElementById('generateImageOverlay');
@@ -2243,14 +2147,6 @@
     aiTemplateNameInput.value = '';
     aiSettingsMsg.textContent = '';
 
-    memoryEnabledCheckbox.checked = profile.memoryEnabled !== false;
-    const cats = profile.memoryCategories || {};
-    memoryCatUser.checked = cats.user !== false;
-    memoryCatProject.checked = cats.project !== false;
-    memoryCatPreference.checked = cats.preference !== false;
-    memoryCatConversation.checked = cats.conversation !== false;
-    memorySettingsMsg.textContent = '';
-
     settingsOverlay.classList.add('open');
   }
 
@@ -2411,33 +2307,6 @@
     }
   });
 
-  saveMemorySettingsBtn.addEventListener('click', async () => {
-    const patch = {
-      memoryEnabled: memoryEnabledCheckbox.checked,
-      memoryCategories: {
-        user: memoryCatUser.checked,
-        project: memoryCatProject.checked,
-        preference: memoryCatPreference.checked,
-        conversation: memoryCatConversation.checked
-      }
-    };
-    try {
-      const res = await fetch('/api/profile', { method: 'PUT', headers: authHeaders(true), body: JSON.stringify(patch) });
-      const data = await res.json();
-      if (!res.ok) {
-        memorySettingsMsg.textContent = data.error || 'Could not save.';
-        memorySettingsMsg.className = 'settings-msg error';
-        return;
-      }
-      profile = { ...profile, ...data };
-      memorySettingsMsg.textContent = 'Saved!';
-      memorySettingsMsg.className = 'settings-msg ok';
-    } catch (e) {
-      memorySettingsMsg.textContent = "Couldn't reach the server.";
-      memorySettingsMsg.className = 'settings-msg error';
-    }
-  });
-
   async function loadKnowledgeEntries() {
     try {
       const res = await fetch('/api/knowledge', { headers: authHeaders() });
@@ -2558,143 +2427,6 @@
       knowledgeMsg.className = 'settings-msg error';
     }
   });
-
-  const MEMORY_CATEGORY_LABELS = { user: 'About you', project: 'Project', preference: 'Preference', conversation: 'Conversation' };
-
-  async function loadMemories() {
-    const params = new URLSearchParams();
-    if (memoryCategoryFilter.value) params.set('category', memoryCategoryFilter.value);
-    if (memorySearchInput.value.trim()) params.set('q', memorySearchInput.value.trim());
-    try {
-      const res = await fetch('/api/memories?' + params.toString(), { headers: authHeaders() });
-      if (!res.ok) { memoryList.innerHTML = ''; return; }
-      const data = await res.json();
-      renderMemoryList(data.memories || []);
-    } catch (e) {
-      memoryMsg.textContent = "Couldn't reach the server.";
-      memoryMsg.className = 'settings-msg error';
-    }
-  }
-
-  function renderMemoryList(memories) {
-    memoryList.innerHTML = '';
-    if (!memories.length) {
-      const empty = document.createElement('div');
-      empty.className = 'settings-hint';
-      empty.textContent = 'Nothing remembered yet — this fills in automatically as you chat.';
-      memoryList.appendChild(empty);
-      return;
-    }
-    memories.forEach(memory => {
-      const item = document.createElement('div');
-      item.className = 'memory-item' + (memory.enabled ? '' : ' disabled');
-
-      const top = document.createElement('div');
-      top.className = 'memory-item-top';
-      const badge = document.createElement('span');
-      badge.className = 'memory-category-badge';
-      badge.textContent = MEMORY_CATEGORY_LABELS[memory.category] || memory.category;
-      top.appendChild(badge);
-      const enabledLabel = document.createElement('label');
-      enabledLabel.className = 'settings-check-row';
-      enabledLabel.style.marginLeft = 'auto';
-      enabledLabel.style.marginBottom = '0';
-      const enabledCheckbox = document.createElement('input');
-      enabledCheckbox.type = 'checkbox';
-      enabledCheckbox.checked = memory.enabled;
-      enabledCheckbox.addEventListener('change', () => {
-        fetch('/api/memories/' + memory.id, {
-          method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ enabled: enabledCheckbox.checked })
-        }).then(() => { item.classList.toggle('disabled', !enabledCheckbox.checked); });
-      });
-      enabledLabel.appendChild(enabledCheckbox);
-      enabledLabel.appendChild(document.createTextNode('On'));
-      top.appendChild(enabledLabel);
-      item.appendChild(top);
-
-      const content = document.createElement('div');
-      content.className = 'memory-item-content';
-      content.textContent = memory.content;
-      item.appendChild(content);
-
-      const actions = document.createElement('div');
-      actions.className = 'knowledge-item-actions';
-
-      const editBtn = document.createElement('button');
-      editBtn.textContent = '✏️ Edit';
-      editBtn.addEventListener('click', () => {
-        if (item.querySelector('textarea')) return;
-        const textarea = document.createElement('textarea');
-        textarea.value = memory.content;
-        content.replaceWith(textarea);
-        const saveRow = document.createElement('div');
-        saveRow.className = 'settings-row';
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'settings-btn';
-        saveBtn.type = 'button';
-        saveBtn.textContent = 'Save';
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'settings-btn secondary';
-        cancelBtn.type = 'button';
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.addEventListener('click', () => loadMemories());
-        saveBtn.addEventListener('click', async () => {
-          const newContent = textarea.value.trim();
-          if (!newContent) return;
-          await fetch('/api/memories/' + memory.id, {
-            method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ content: newContent })
-          });
-          loadMemories();
-        });
-        saveRow.appendChild(saveBtn);
-        saveRow.appendChild(cancelBtn);
-        textarea.after(saveRow);
-      });
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.textContent = '🗑️ Delete';
-      let confirmingDelete = false;
-      deleteBtn.addEventListener('click', () => {
-        if (!confirmingDelete) {
-          confirmingDelete = true;
-          deleteBtn.textContent = '✓ Confirm delete';
-          deleteBtn.classList.add('delete-confirm');
-          setTimeout(() => {
-            if (confirmingDelete) {
-              confirmingDelete = false;
-              deleteBtn.textContent = '🗑️ Delete';
-              deleteBtn.classList.remove('delete-confirm');
-            }
-          }, 3000);
-          return;
-        }
-        fetch('/api/memories/' + memory.id, { method: 'DELETE', headers: authHeaders() }).then(() => loadMemories());
-      });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(deleteBtn);
-      item.appendChild(actions);
-      memoryList.appendChild(item);
-    });
-  }
-
-  function openMemory() {
-    memorySearchInput.value = '';
-    memoryCategoryFilter.value = '';
-    memoryMsg.textContent = '';
-    loadMemories();
-    memoryOverlay.classList.add('open');
-  }
-
-  memoryBtn.addEventListener('click', openMemory);
-  closeMemoryBtn.addEventListener('click', () => memoryOverlay.classList.remove('open'));
-
-  let memorySearchDebounce = null;
-  memorySearchInput.addEventListener('input', () => {
-    clearTimeout(memorySearchDebounce);
-    memorySearchDebounce = setTimeout(loadMemories, 300);
-  });
-  memoryCategoryFilter.addEventListener('change', loadMemories);
 
   function showTyping() {
     const div = document.createElement('div');
