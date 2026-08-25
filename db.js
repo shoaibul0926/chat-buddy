@@ -293,7 +293,6 @@ function createKnowledgeEntry(userId, entry) {
     id: crypto.randomUUID(),
     title: entry.title,
     content: entry.content,
-    chunks: entry.chunks || [],
     createdAt: now,
     updatedAt: now
   };

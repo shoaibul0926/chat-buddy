@@ -11,8 +11,9 @@ const tf = require('@tensorflow/tfjs');
 const cocoSsd = require('@tensorflow-models/coco-ssd');
 const { Jimp } = require('jimp');
 const db = require('./db');
-const { extractText, findAnswer, embedChunksForFile, isEmbeddingConfigured, semanticSearchChunks } = require('./docQA');
+const { extractText, findAnswer, embedChunksForFile, embedTexts, isEmbeddingConfigured } = require('./docQA');
 const ai = require('./ai');
+const vectorStore = require('./vectorStore');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 3001;
@@ -198,7 +199,8 @@ app.post('/api/files', requireAuth, upload.single('file'), async (req, res) => {
       fileRecord.text = (await extractText(req.file.path, ext)).slice(0, 200000);
       if (isEmbeddingConfigured()) {
         try {
-          fileRecord.chunks = await embedChunksForFile(fileRecord.text);
+          const chunks = await embedChunksForFile(fileRecord.text);
+          await vectorStore.upsertChunks(req.user.id, 'file', fileRecord.id, fileRecord.name, chunks);
         } catch (e) {
           // Q&A still works via keyword search on fileRecord.text — an
           // embeddings outage shouldn't block the upload itself.
@@ -252,7 +254,7 @@ app.post('/api/ask-files', requireAuth, async (req, res) => {
   if (!question) return res.status(400).json({ error: 'Missing question' });
   const files = db.listFiles(req.user.id);
   if (!files.length) return res.json({ answer: null });
-  const match = await findAnswer(files, question);
+  const match = await findAnswer(req.user.id, files, question);
   res.json(match ? { answer: match.sentence, source: match.file } : { answer: null });
 });
 
@@ -297,14 +299,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   let effectiveSystemPrompt = typeof systemPrompt === 'string' ? systemPrompt : '';
   if (isEmbeddingConfigured()) {
     try {
-      const files = db.listFiles(req.user.id).filter(f => Array.isArray(f.chunks) && f.chunks.length);
-      const knowledge = db.listKnowledge(req.user.id).filter(k => Array.isArray(k.chunks) && k.chunks.length);
-      const pool = [
-        ...files.map(f => ({ sourceLabel: f.name, chunks: f.chunks })),
-        ...knowledge.map(k => ({ sourceLabel: k.title, chunks: k.chunks }))
-      ];
-      if (pool.length) {
-        const results = await semanticSearchChunks(pool, message);
+      if (await vectorStore.hasAny(req.user.id)) {
+        const [messageEmbedding] = await embedTexts([message], 'query');
+        const results = await vectorStore.queryTopK(req.user.id, messageEmbedding, 5);
         if (results.length) {
           const context = results.map(r => `[${r.sourceLabel}]\n${r.text}`).join('\n\n');
           effectiveSystemPrompt = (effectiveSystemPrompt ? effectiveSystemPrompt + '\n\n' : '') +
@@ -379,15 +376,16 @@ app.post('/api/knowledge', requireAuth, async (req, res) => {
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required.' });
   if (!content || !content.trim()) return res.status(400).json({ error: 'Content is required.' });
   const entry = { title: title.trim().slice(0, 120), content: content.trim().slice(0, 50000) };
+  const record = db.createKnowledgeEntry(req.user.id, entry);
+  if (!record) return res.status(404).json({ error: 'User not found' });
   if (isEmbeddingConfigured()) {
     try {
-      entry.chunks = await embedChunksForFile(entry.content);
+      const chunks = await embedChunksForFile(record.content);
+      await vectorStore.upsertChunks(req.user.id, 'knowledge', record.id, record.title, chunks);
     } catch (e) {
       console.error('Embedding knowledge entry failed, falling back to no embeddings for this entry:', e.message);
     }
   }
-  const record = db.createKnowledgeEntry(req.user.id, entry);
-  if (!record) return res.status(404).json({ error: 'User not found' });
   res.json({ knowledge: toKnowledgeResponse(record) });
 });
 
@@ -396,21 +394,38 @@ app.put('/api/knowledge/:id', requireAuth, async (req, res) => {
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required.' });
   if (!content || !content.trim()) return res.status(400).json({ error: 'Content is required.' });
   const patch = { title: title.trim().slice(0, 120), content: content.trim().slice(0, 50000) };
+  const record = db.updateKnowledgeEntry(req.user.id, req.params.id, patch);
+  if (!record) return res.status(404).json({ error: 'Not found' });
   if (isEmbeddingConfigured()) {
     try {
-      patch.chunks = await embedChunksForFile(patch.content);
+      // Compute the new chunks before touching the index — if embedding
+      // fails, the old vectors must stay intact rather than being deleted
+      // and never replaced.
+      const chunks = await embedChunksForFile(record.content);
+      await vectorStore.deleteBySource(req.user.id, 'knowledge', record.id);
+      await vectorStore.upsertChunks(req.user.id, 'knowledge', record.id, record.title, chunks);
     } catch (e) {
       console.error('Embedding knowledge entry failed, keeping previous embeddings for this entry:', e.message);
     }
   }
-  const record = db.updateKnowledgeEntry(req.user.id, req.params.id, patch);
-  if (!record) return res.status(404).json({ error: 'Not found' });
   res.json({ knowledge: toKnowledgeResponse(record) });
 });
 
-app.delete('/api/knowledge/:id', requireAuth, (req, res) => {
+app.delete('/api/knowledge/:id', requireAuth, async (req, res) => {
   const ok = db.deleteKnowledgeEntry(req.user.id, req.params.id);
   if (!ok) return res.status(404).json({ error: 'Not found' });
+  // Only touch the vector index when embeddings are actually in use — same
+  // gate every other embedding-related code path uses, so an app that never
+  // configures VOYAGE_API_KEY never creates a vector-index/ folder at all.
+  if (isEmbeddingConfigured()) {
+    try {
+      await vectorStore.deleteBySource(req.user.id, 'knowledge', req.params.id);
+    } catch (e) {
+      // The JSON record is already gone either way — a stale vector left
+      // behind is a minor cleanup failure, not a reason to error the request.
+      console.error('Failed to clean up vector index for a deleted knowledge entry:', e.message);
+    }
+  }
   res.json({ ok: true });
 });
 

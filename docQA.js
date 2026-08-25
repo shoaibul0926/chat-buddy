@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
+const vectorStore = require('./vectorStore');
 
 async function extractText(filePath, ext) {
   if (ext === '.txt') return fs.readFileSync(filePath, 'utf8');
@@ -106,14 +107,15 @@ function findAnswerKeyword(files, question) {
   return best;
 }
 
-// --- Semantic matching (Voyage AI embeddings) ---
+// --- Semantic matching (Voyage AI embeddings + a real local vector index) ---
 //
 // Anthropic has no first-party embeddings endpoint; Voyage AI (acquired by
 // Anthropic, and their recommended embeddings provider for RAG alongside
 // Claude) fills that role. Chunk embeddings are computed once per file at
-// upload time and stored on the file record; answering a question only needs
-// one embedding call (for the question itself) plus local cosine-similarity
-// math against the precomputed vectors.
+// upload time and stored in vectorStore.js's vectra index (not inline on the
+// file/knowledge record); answering a question only needs one embedding call
+// (for the question itself) plus an indexed lookup against the precomputed
+// vectors.
 const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
 const EMBEDDING_MODEL = 'voyage-3.5-lite';
 const EMBEDDING_DIMENSION = 512;
@@ -159,9 +161,10 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Computes {text, embedding} pairs for a file's chunks — call once at upload
-// time and store the result on the file record so answering questions later
-// never needs to re-embed the whole document.
+// Computes {text, embedding} pairs for a file's/knowledge entry's chunks —
+// call once at upload/save time. Callers are responsible for storing the
+// result via vectorStore.upsertChunks; this function only computes vectors,
+// it never touches storage.
 async function embedChunksForFile(text) {
   const chunks = chunkText(text).filter(c => words(c).length > 0).slice(0, EMBEDDING_BATCH_LIMIT);
   if (!chunks.length) return [];
@@ -169,56 +172,36 @@ async function embedChunksForFile(text) {
   return chunks.map((chunkText, i) => ({ text: chunkText, embedding: embeddings[i] }));
 }
 
-async function findAnswerSemantic(files, question) {
+// Single best match across a user's embedded files (sourceType: 'file'),
+// for extractive Q&A (/api/ask-files). Maps vectorStore's generic
+// {sourceLabel, text, score} shape to this function's existing
+// {score, sentence, file} contract so callers don't need to change.
+async function findAnswerSemantic(userId, question) {
   const [qEmbedding] = await module.exports.embedTexts([question], 'query');
-  let best = null;
-  for (const f of files) {
-    for (const chunk of f.chunks || []) {
-      const score = cosineSimilarity(qEmbedding, chunk.embedding);
-      if (score < SEMANTIC_SIMILARITY_THRESHOLD) continue;
-      if (!best || score > best.score) {
-        best = { score, sentence: chunk.text, file: f.name };
-      }
-    }
-  }
-  if (best && best.sentence.length > MAX_ANSWER_LENGTH) {
-    best.sentence = best.sentence.slice(0, MAX_ANSWER_LENGTH) + '…';
-  }
-  return best;
+  const match = await vectorStore.findBestMatch(userId, qEmbedding, {
+    sourceType: 'file',
+    threshold: SEMANTIC_SIMILARITY_THRESHOLD
+  });
+  if (!match) return null;
+  let sentence = match.text;
+  if (sentence.length > MAX_ANSWER_LENGTH) sentence = sentence.slice(0, MAX_ANSWER_LENGTH) + '…';
+  return { score: match.score, sentence, file: match.sourceLabel };
 }
 
-// Retrieves the top-K most relevant chunks across a merged pool of sources
-// (uploaded files + knowledge base entries) for a single query — used for
-// RAG context injection in /api/chat. Unlike findAnswerSemantic (single best
-// chunk overall, for extractive Q&A), this returns multiple ranked results
-// across possibly-multiple sources, and is purely additive: it doesn't touch
-// findAnswerSemantic or any other existing export/behavior.
-async function semanticSearchChunks(pool, query, opts = {}) {
-  const { topK = 5, threshold = SEMANTIC_SIMILARITY_THRESHOLD } = opts;
-  const [qEmbedding] = await module.exports.embedTexts([query], 'query');
-  const scored = [];
-  for (const source of pool) {
-    for (const chunk of source.chunks || []) {
-      const score = cosineSimilarity(qEmbedding, chunk.embedding);
-      if (score < threshold) continue;
-      scored.push({ score, text: chunk.text, sourceLabel: source.sourceLabel });
-    }
-  }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK);
-}
-
-// Public entry point: prefer semantic matching for files that have
-// precomputed embeddings, falling back to keyword matching — for files with
-// no embeddings, when no question clears the semantic similarity threshold,
+// Public entry point: prefer semantic matching when this user has anything
+// embedded, falling back to keyword matching — for users with nothing
+// embedded yet, when no question clears the semantic similarity threshold,
 // or when the embeddings call itself fails (network/API error), so a Voyage
-// outage degrades matching quality instead of breaking Q&A entirely.
-async function findAnswer(files, question) {
-  const embeddedFiles = files.filter(f => Array.isArray(f.chunks) && f.chunks.length);
-  if (embeddedFiles.length && isEmbeddingConfigured()) {
+// outage degrades matching quality instead of breaking Q&A entirely. The
+// hasAny check avoids spending an embedding API call on a question that
+// couldn't possibly match anything.
+async function findAnswer(userId, files, question) {
+  if (isEmbeddingConfigured()) {
     try {
-      const semanticMatch = await module.exports.findAnswerSemantic(embeddedFiles, question);
-      if (semanticMatch) return semanticMatch;
+      if (await vectorStore.hasAny(userId, 'file')) {
+        const semanticMatch = await module.exports.findAnswerSemantic(userId, question);
+        if (semanticMatch) return semanticMatch;
+      }
     } catch (e) {
       console.error('Semantic match failed, falling back to keyword search:', e.message);
     }
@@ -227,7 +210,7 @@ async function findAnswer(files, question) {
 }
 
 module.exports = {
-  extractText, words, findAnswer, findAnswerKeyword, findAnswerSemantic, semanticSearchChunks,
+  extractText, words, findAnswer, findAnswerKeyword, findAnswerSemantic,
   chunkText, embedTexts, embedChunksForFile, cosineSimilarity, isEmbeddingConfigured,
   STOPWORDS, MAX_ANSWER_LENGTH, minOverlapRequired,
   EMBEDDING_MODEL, EMBEDDING_DIMENSION, SEMANTIC_SIMILARITY_THRESHOLD

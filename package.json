@@ -21,6 +21,7 @@
     "mammoth": "^1.12.1",
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "vectra": "^0.15.0"
   }
 }

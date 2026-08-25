@@ -1,5 +1,6 @@
 node_modules/
 data.json
 uploads/
+vector-index/
 .env
 *.traineddata

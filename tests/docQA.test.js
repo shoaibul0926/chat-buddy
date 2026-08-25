@@ -60,7 +60,7 @@ function sampleFiles() {
 
 test('(b) an on-topic question returns the correct, relevant sentence', async () => {
   const files = sampleFiles();
-  const match = await findAnswer(files, 'How many days do I have to get a refund?');
+  const match = await findAnswer('docqa-test-user', files,'How many days do I have to get a refund?');
   assert.ok(match, 'expected a match for an on-topic refund question');
   assert.match(match.sentence, /14 days/);
   assert.equal(match.file, 'policy.pdf');
@@ -68,7 +68,7 @@ test('(b) an on-topic question returns the correct, relevant sentence', async ()
 
 test('(b) a second on-topic question matches a different, correct sentence', async () => {
   const files = sampleFiles();
-  const match = await findAnswer(files, 'Where are your offices located?');
+  const match = await findAnswer('docqa-test-user', files,'Where are your offices located?');
   assert.ok(match, 'expected a match for an on-topic office-location question');
   assert.match(match.sentence, /Springfield/);
 });
@@ -79,7 +79,7 @@ test('(c) an out-of-document question returns no answer instead of a weak/unrela
   // sentence in the document (e.g. "weather" doesn't appear at all) — before
   // the relevance threshold fix, a single shared word anywhere in the text
   // was enough for findAnswer to confidently return an unrelated sentence.
-  const match = await findAnswer(files, "What's the weather like tomorrow?");
+  const match = await findAnswer('docqa-test-user', files,"What's the weather like tomorrow?");
   assert.equal(match, null);
 });
 
@@ -94,14 +94,14 @@ test('regression: a single incidental keyword match is rejected for multi-keywor
   // "performance" is the only shared meaningful word with "budget review" — a
   // single-word overlap out of two question keywords should not clear the
   // relevance threshold.
-  const match = await findAnswer(files, 'What is the performance budget review?');
+  const match = await findAnswer('docqa-test-user', files,'What is the performance budget review?');
   // Either no match, or if one is returned it must be a strong (>=2 word) match.
   if (match) assert.ok(match.overlap >= 2, 'weak single-word matches must not be returned');
 });
 
 test('multi-keyword question with strong overlap still matches', async () => {
   const files = sampleFiles();
-  const match = await findAnswer(files, 'Is shipping cost refundable?');
+  const match = await findAnswer('docqa-test-user', files,'Is shipping cost refundable?');
   assert.ok(match);
   assert.match(match.sentence, /non-refundable/);
 });
