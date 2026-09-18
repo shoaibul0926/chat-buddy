@@ -715,84 +715,6 @@
     margin: 2px 0;
   }
 
-  /* ---------- Auth overlay ---------- */
-
-  #authOverlay {
-    position: absolute;
-    inset: 0;
-    background: var(--overlay-bg);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 30px;
-    z-index: 20;
-  }
-
-  #authOverlay h2 {
-    margin: 0 0 4px;
-    color: var(--accent);
-  }
-
-  #authOverlay input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--input-border);
-    background: var(--input-bg);
-    color: var(--text);
-    border-radius: 8px;
-    font-size: 14px;
-    outline: none;
-  }
-
-  #authOverlay input:focus {
-    border-color: var(--accent);
-  }
-
-  #authForm {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  #authSubmitBtn {
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 11px;
-    font-size: 14px;
-    font-weight: bold;
-    cursor: pointer;
-  }
-
-  #authSubmitBtn:hover {
-    background: var(--accent-hover);
-  }
-
-  #authSubmitBtn:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  #authToggle {
-    background: none;
-    border: none;
-    color: var(--accent);
-    font-size: 13px;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  #authError {
-    color: #c0392b;
-    font-size: 13px;
-    min-height: 16px;
-    text-align: center;
-  }
-
   /* ---------- Settings overlay ---------- */
 
   #settingsOverlay {
@@ -1078,18 +1000,6 @@
       <button id="clearBtn">Clear</button>
     </header>
 
-    <div id="authOverlay">
-      <h2>🤖 Chat Buddy</h2>
-      <p style="margin:0; color:var(--text-secondary); font-size:13px;">Sign in to save your chats to your account</p>
-      <form id="authForm">
-        <input id="authUsername" type="text" placeholder="Username" autocomplete="username" required />
-        <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" required />
-        <div id="authError"></div>
-        <button id="authSubmitBtn" type="submit">Login</button>
-      </form>
-      <button id="authToggle">Need an account? Register</button>
-    </div>
-
     <div id="settingsOverlay">
       <div id="settingsCard">
         <h3>Settings <button id="closeSettingsBtn">✕</button></h3>
@@ -1118,7 +1028,7 @@
         <div class="settings-section" style="margin-top:16px;">
           <div class="settings-label">AI chat</div>
           <div class="settings-hint" id="aiNotConfiguredHint" style="display:none;">
-            Set ANTHROPIC_API_KEY or OPENAI_API_KEY on the server to enable real AI chat. Until then, Chat Buddy uses its built-in rule-based replies.
+            Real AI chat needs an API key and a server, so it isn't available in this hosted version. Chat Buddy uses its built-in rule-based replies.
           </div>
           <select id="aiProviderSelect"></select>
           <select id="aiModelSelect"></select>
@@ -1134,14 +1044,11 @@
         <div class="settings-msg" id="aiSettingsMsg"></div>
 
         <div class="settings-section" style="margin-top:16px;">
-          <div class="settings-label">Change password</div>
-          <input id="currentPasswordInput" type="password" placeholder="Current password" />
-          <input id="newPasswordInput" type="password" placeholder="New password (6+ chars)" />
+          <div class="settings-label">Your data</div>
+          <p style="margin:0; color:var(--text-secondary); font-size:13px;">There's no account or server: your chats, files and settings are stored only in this browser, on this device.</p>
         </div>
-        <button class="settings-btn secondary" id="changePasswordBtn">Change password</button>
-        <div class="settings-msg" id="passwordMsg"></div>
-
-        <button class="settings-btn danger" id="settingsLogoutBtn" style="margin-top:16px;">Logout</button>
+        <button class="settings-btn danger" id="resetDataBtn" style="margin-top:8px;">Delete all data on this device</button>
+        <div class="settings-msg" id="resetMsg"></div>
       </div>
     </div>
 
@@ -1165,7 +1072,7 @@
     <div id="generateImageOverlay">
       <div id="generateImageCard">
         <h3>Generate image <button id="closeGenerateImageBtn">✕</button></h3>
-        <div class="settings-hint" id="generateImageNotConfiguredHint" style="display:none;">Set OPENAI_API_KEY on the server to enable image generation.</div>
+        <div class="settings-hint" id="generateImageNotConfiguredHint" style="display:none;">Image generation needs an API key and a server, so it isn't available in this hosted version.</div>
         <div class="settings-hint">Each generation is a real, billed OpenAI API call.</div>
         <div class="settings-section">
           <textarea id="generateImagePromptInput" placeholder="Describe the image you want..." style="min-height:80px;"></textarea>
@@ -1216,6 +1123,7 @@
   </div>
 </div>
 
+<script src="local-api.js"></script>
 <script>
   const messagesEl = document.getElementById('messages');
   const inputEl = document.getElementById('userInput');
@@ -1240,13 +1148,6 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  const authOverlay = document.getElementById('authOverlay');
-  const authForm = document.getElementById('authForm');
-  const authUsername = document.getElementById('authUsername');
-  const authPassword = document.getElementById('authPassword');
-  const authError = document.getElementById('authError');
-  const authSubmitBtn = document.getElementById('authSubmitBtn');
-  const authToggle = document.getElementById('authToggle');
 
   let userName = null;
   let notes = [];
@@ -1260,11 +1161,11 @@
   let knowledgeEntries = [];
   let editingKnowledgeId = null;
 
-  const TOKEN_KEY = 'chatBuddyToken';
   const MAX_HISTORY = 40;
   let history = [];
-  let authToken = localStorage.getItem(TOKEN_KEY) || null;
-  let authMode = 'login';
+  // No accounts: local-api.js answers every /api call from this browser's own
+  // storage and ignores auth headers, so this is just a constant.
+  const authToken = 'local';
 
   // ---------- Phase 3 state: profile, folders, conversations ----------
   const AVATARS = ['🤖', '🦊', '🐼', '🐸', '🐙', '🦉', '🐳', '🦄', '🐝', '🦁'];
@@ -1294,11 +1195,8 @@
   const themeDarkBtn = document.getElementById('themeDarkBtn');
   const saveProfileBtn = document.getElementById('saveProfileBtn');
   const profileMsg = document.getElementById('profileMsg');
-  const currentPasswordInput = document.getElementById('currentPasswordInput');
-  const newPasswordInput = document.getElementById('newPasswordInput');
-  const changePasswordBtn = document.getElementById('changePasswordBtn');
-  const passwordMsg = document.getElementById('passwordMsg');
-  const settingsLogoutBtn = document.getElementById('settingsLogoutBtn');
+  const resetDataBtn = document.getElementById('resetDataBtn');
+  const resetMsg = document.getElementById('resetMsg');
 
   const aiNotConfiguredHint = document.getElementById('aiNotConfiguredHint');
   const aiProviderSelect = document.getElementById('aiProviderSelect');
@@ -1472,51 +1370,7 @@
   }
 
   function showApp() {
-    authOverlay.style.display = 'none';
     appEl.classList.add('with-sidebar');
-  }
-
-  function showAuth(message) {
-    authOverlay.style.display = 'flex';
-    appEl.classList.remove('with-sidebar');
-    messagesEl.innerHTML = '';
-    authError.textContent = message || '';
-  }
-
-  function setAuthMode(mode) {
-    authMode = mode;
-    authError.textContent = '';
-    if (mode === 'login') {
-      authSubmitBtn.textContent = 'Login';
-      authToggle.textContent = "Need an account? Register";
-      authPassword.autocomplete = 'current-password';
-    } else {
-      authSubmitBtn.textContent = 'Register';
-      authToggle.textContent = 'Already have an account? Login';
-      authPassword.autocomplete = 'new-password';
-    }
-  }
-
-  function setToken(token) {
-    authToken = token;
-    localStorage.setItem(TOKEN_KEY, token);
-  }
-
-  function logout() {
-    authToken = null;
-    userFiles = [];
-    conversations = [];
-    folders = [];
-    promptTemplates = [];
-    knowledgeEntries = [];
-    aiConfig = { providers: [], configured: {} };
-    currentConversationId = null;
-    localStorage.removeItem(TOKEN_KEY);
-    authUsername.value = '';
-    authPassword.value = '';
-    settingsOverlay.classList.remove('open');
-    setAuthMode('login');
-    showAuth();
   }
 
   async function loadUserFiles() {
@@ -1579,7 +1433,7 @@
   function applyImageFeatureGating() {
     const enabled = imageFeaturesConfigured();
     generateImageBtn.disabled = !enabled;
-    generateImageBtn.title = enabled ? 'Generate an image' : 'Generate an image (set OPENAI_API_KEY on the server to enable)';
+    generateImageBtn.title = enabled ? 'Generate an image' : "Image generation isn't available in the hosted version";
   }
 
   // Action row appended under any image's chat bubble (freshly generated or
@@ -1787,7 +1641,7 @@
     await openConversation(data.conversation.id);
   }
 
-  async function loadFromServer() {
+  async function loadSavedData() {
     try {
       await loadProfile();
       await loadFolders();
@@ -1802,36 +1656,11 @@
       } else {
         await openConversation(conversations[0].id);
       }
-      showApp();
     } catch (e) {
-      logout();
+      console.error(e);
+      addMessage("Sorry, I couldn't open the chats saved on this device.", 'bot');
     }
-  }
-
-  async function handleAuthSubmit(e) {
-    e.preventDefault();
-    const username = authUsername.value.trim();
-    const password = authPassword.value;
-    authError.textContent = '';
-    authSubmitBtn.disabled = true;
-    try {
-      const res = await fetch('/api/' + authMode, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        authError.textContent = data.error || 'Something went wrong.';
-        return;
-      }
-      setToken(data.token);
-      await loadFromServer();
-    } catch (err) {
-      authError.textContent = "Can't reach the server. Is it running?";
-    } finally {
-      authSubmitBtn.disabled = false;
-    }
+    showApp();
   }
 
   // ---------- Sidebar rendering ----------
@@ -2132,9 +1961,7 @@
     themeLightBtn.classList.toggle('selected', profile.theme !== 'dark');
     themeDarkBtn.classList.toggle('selected', profile.theme === 'dark');
     profileMsg.textContent = '';
-    passwordMsg.textContent = '';
-    currentPasswordInput.value = '';
-    newPasswordInput.value = '';
+    resetMsg.textContent = '';
 
     populateAiProviderSelect();
     const firstConfigured = aiConfig.providers.find(p => aiConfig.configured && aiConfig.configured[p.id]);
@@ -2186,24 +2013,11 @@
     }
   });
 
-  changePasswordBtn.addEventListener('click', async () => {
-    const currentPassword = currentPasswordInput.value;
-    const newPassword = newPasswordInput.value;
-    try {
-      const res = await fetch('/api/password', { method: 'PUT', headers: authHeaders(true), body: JSON.stringify({ currentPassword, newPassword }) });
-      const data = await res.json();
-      if (!res.ok) { passwordMsg.textContent = data.error || 'Could not change password.'; passwordMsg.className = 'settings-msg error'; return; }
-      passwordMsg.textContent = 'Password changed!';
-      passwordMsg.className = 'settings-msg ok';
-      currentPasswordInput.value = '';
-      newPasswordInput.value = '';
-    } catch (e) {
-      passwordMsg.textContent = "Couldn't reach the server.";
-      passwordMsg.className = 'settings-msg error';
-    }
+  resetDataBtn.addEventListener('click', async () => {
+    if (!window.confirm('Delete all chats, files, folders and settings stored in this browser? This cannot be undone.')) return;
+    await fetch('/api/local-data', { method: 'DELETE' });
+    location.reload();
   });
-
-  settingsLogoutBtn.addEventListener('click', logout);
 
   function populateAiProviderSelect() {
     aiProviderSelect.innerHTML = aiConfig.providers.map(p => {
@@ -3143,9 +2957,6 @@
     addMessage("Chat cleared! I'm Chat Buddy again. What's your name?", 'bot');
   });
 
-  authForm.addEventListener('submit', handleAuthSubmit);
-  authToggle.addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
-
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
     if (fileInput.files[0]) handleImageUpload(fileInput.files[0]);
@@ -3186,10 +2997,5 @@
     }
   });
 
-  setAuthMode('login');
-  if (authToken) {
-    loadFromServer();
-  } else {
-    showAuth();
-  }
+  loadSavedData();
 </script>

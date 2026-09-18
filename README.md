@@ -1,18 +1,16 @@
 # Chat Buddy
 
-**Live: https://chat-buddy-production.up.railway.app**
+**Live: https://shoaibul0926.github.io/chat-buddy/**
 
 A chatbot with rule-based chat (or real streaming LLM chat via Anthropic/OpenAI, if configured), AI image generation/editing (OpenAI, if configured), an agent-style multi-step task planner, image/video upload & analysis, webcam capture, screenshot paste, voice input, real user accounts with server-side persistence, document upload/preview/Q&A (PDF/DOCX/TXT), image intelligence (OCR, object detection, captioning, Q&A), a personal knowledge base with RAG over a real local vector index, and a full multi-conversation UX (profiles, settings, light/dark theme, folders, search, rename/delete).
 
-## What changed: real authentication
+## Hosting: static, no accounts, no server
 
-Chat Buddy started as a single static `index.html` (no backend). It now has a small **Node/Express backend** with:
+The live app runs entirely in the browser on GitHub Pages. There is no login and no backend: `public/local-api.js` intercepts the UI's `/api/*` calls and answers them from IndexedDB on the visitor's own device, so chats, folders, files and settings never leave the browser. PDF/DOCX text extraction, OCR and object detection also run client-side (loaded on demand from a CDN).
 
-- **Auth**: register/login with bcrypt-hashed passwords and JWT session tokens.
-- **Per-user database**: each user's profile, folders, and conversations (each with its own chat history, remembered name, and notes) are stored server-side (in `data.json`, a simple JSON file — no native database driver required, so it installs anywhere without a C++ build toolchain).
-- The frontend (`public/index.html`) now shows a login/register screen and syncs chat state to `/api/conversations/:id` instead of using `localStorage`.
+Not available in the hosted version, because they need paid API keys and a server: LLM chat (Anthropic/OpenAI) and image generation/editing. The built-in rule-based bot handles chat.
 
-Because of this, **GitHub Pages can no longer host the working app** — Pages only serves static files, and this now needs a running Node process for the API. See "Deploying" below.
+The Node/Express backend below (accounts, JWT, server-side storage, vector index) is kept in the repo for reference and can still be run locally, but the UI no longer uses it.
 
 ## Running locally
 
@@ -135,7 +133,7 @@ The first batch of a larger "content creation, not just analysis" phase — full
 
 ## Deploying
 
-Currently deployed on **Railway** at https://chat-buddy-production.up.railway.app (project: `chat-buddy`, deployed via `railway up`; `JWT_SECRET` and `DATA_DIR=/data` are set as environment variables there).
+Previously deployed on Railway; that deployment has been retired in favour of the static GitHub Pages version described above. If you self-host the Node backend, the notes below still apply.
 
 **Persistent storage**: `data.json` and `uploads/` are written under the path in the `DATA_DIR` environment variable (defaults to the app directory, so local dev is unaffected). On Railway, `DATA_DIR` points at a mounted volume (`chat-buddy-volume`, 500MB, mount path `/data`) so accounts and files survive container restarts — not just code redeploys. Earlier versions of this app stored everything on the container's local disk with no volume, which meant registered accounts could disappear after *any* restart (idle sleep, crash-restart, OOM), not only a deploy — that bug is fixed as of the volume + `DATA_DIR` change.
 
